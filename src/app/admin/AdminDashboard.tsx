@@ -114,9 +114,9 @@ export function AdminDashboard() {
 
   return (
     <AdminShell>
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-[1400px] px-0">
         {showForm ? (
-          <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
+          <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
             <div className="mb-8 flex items-center gap-2 text-neutral-600">
               <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
                 <PersonGlyph />
@@ -126,7 +126,7 @@ export function AdminDashboard() {
               </h1>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-8">
+            <form onSubmit={handleSubmit} className="max-w-4xl space-y-8">
               <div className="grid gap-6 md:grid-cols-2 md:gap-x-10 md:gap-y-6">
                 <div>
                   <label htmlFor="profile-name" className={labelClass}>
@@ -226,7 +226,7 @@ export function AdminDashboard() {
             </form>
           </section>
         ) : (
-          <section className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
+          <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
             <h2 className="text-center text-xl font-bold tracking-tight text-neutral-900 md:text-2xl">
               プロフィール設定
             </h2>

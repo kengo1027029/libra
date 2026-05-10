@@ -32,6 +32,9 @@ function formatStorageDate(date: string) {
   return date.replaceAll("-", "/");
 }
 
+/** EventDetailPage の EVENT_TITLE_MAP と対応するモックのみ詳細ありとして行クリック遷移可 */
+const MOCK_EVENT_IDS_WITH_DETAIL_PAGE = new Set(["1", "2", "3"]);
+
 const MOCK_EVENTS: EventTableRow[] = [
   {
     id: "1",
@@ -198,6 +201,12 @@ export function EventsListPage() {
 
   const allRows = useMemo(() => [...storedRows, ...MOCK_EVENTS], [storedRows]);
 
+  const storedIds = useMemo(() => new Set(storedRows.map((r) => r.id)), [storedRows]);
+
+  function eventHasDetailPage(rowId: string): boolean {
+    return storedIds.has(rowId) || MOCK_EVENT_IDS_WITH_DETAIL_PAGE.has(rowId);
+  }
+
   if (!ready) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-[#f8f9fa] text-sm text-neutral-500">
@@ -283,13 +292,34 @@ export function EventsListPage() {
                   const isReturned = row.status === "差し戻し";
                   const rowText = isReturned ? "text-red-700" : "text-neutral-900";
                   const rowMuted = isReturned ? "text-red-700/85" : "text-neutral-700";
+                  const navigable = eventHasDetailPage(row.id);
+
+                  const rowSurface = isReturned ? "bg-amber-50" : "bg-white";
+                  const rowHover =
+                    navigable && isReturned
+                      ? "cursor-pointer hover:bg-amber-100/90"
+                      : navigable && !isReturned
+                        ? "cursor-pointer hover:bg-gray-50"
+                        : isReturned
+                          ? "hover:bg-amber-50/90"
+                          : "hover:bg-neutral-50/70";
+
+                  function handleRowNavigate() {
+                    if (!navigable) return;
+                    router.push(`/admin/events/${row.id}`);
+                  }
 
                   return (
                     <tr
                       key={row.id}
-                      className={`border-b border-neutral-100 transition-colors ${
-                        isReturned ? "bg-amber-50 hover:bg-amber-50/90" : "bg-white hover:bg-neutral-50/70"
-                      }`}
+                      className={`border-b border-neutral-100 transition-colors ${rowSurface} ${rowHover}`}
+                      onClick={(e) => {
+                        if (!navigable) return;
+                        const target = e.target as HTMLElement | null;
+                        if (!target) return;
+                        if (target.closest("[data-event-row-menu]")) return;
+                        handleRowNavigate();
+                      }}
                     >
                       <td className={`${cellPadding} whitespace-nowrap ${rowMuted}`}>{row.entryDate}</td>
                       <td className={`${cellPadding} font-medium ${rowText}`}>{row.name}</td>
@@ -299,20 +329,25 @@ export function EventsListPage() {
                       <td className={`${cellPadding} whitespace-nowrap ${rowMuted}`}>{row.publishDate}</td>
                       <td className={`${cellPadding} whitespace-nowrap ${rowMuted}`}>{row.applicationPeriod}</td>
                       <td
-                        className={`${cellPadding} sticky right-0 z-10 border-l text-right shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.25)] ${
+                        data-event-row-menu={row.id}
+                        className={`${cellPadding} sticky right-0 z-10 cursor-default border-l text-right shadow-[-6px_0_8px_-8px_rgba(15,23,42,0.25)] ${
                           isReturned
                             ? "border-amber-200 bg-amber-50"
                             : "border-neutral-200 bg-white"
                         }`}
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="relative inline-flex justify-end" data-event-row-menu={row.id}>
+                        <div className="relative inline-flex justify-end">
                           <button
                             type="button"
                             className={menuBtnClass}
                             aria-expanded={openMenuId === row.id}
                             aria-haspopup="menu"
                             aria-label={`${row.name} の操作メニュー`}
-                            onClick={() => toggleMenu(row.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleMenu(row.id);
+                            }}
                           >
                             ···
                           </button>

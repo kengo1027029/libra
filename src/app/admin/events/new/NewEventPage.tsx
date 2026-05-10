@@ -223,7 +223,8 @@ export function NewEventPage() {
                 </label>
                 <div>
                   <div
-                    className="flex min-h-28 items-center justify-center rounded-xl border border-dashed border-sky-300 bg-sky-50/50 px-4 text-center"
+                    className="flex min-h-28 cursor-pointer items-center justify-center rounded-xl border border-dashed border-sky-300 bg-sky-50/50 px-4 text-center"
+                    onClick={() => fileInputRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -248,7 +249,10 @@ export function NewEventPage() {
                   <div className="mt-3">
                     <button
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
                       className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
                     >
                       {imagePreviewUrl ? "画像を変更" : "またはファイルを選択"}
@@ -398,20 +402,20 @@ export function NewEventPage() {
                 <label htmlFor="boothFee" className="pt-2 text-sm font-medium text-neutral-800">
                   出店料金<RequiredMark />
                 </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="boothFee"
-                    className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm"
-                    placeholder={INPUT_PLACEHOLDER.boothFee}
-                    value={draft.boothFee}
-                    onChange={(e) => setField("boothFee", e.target.value)}
-                  />
-                  <span className="shrink-0 text-sm text-neutral-500">税込</span>
+                <div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      id="boothFee"
+                      className="w-full rounded-lg border border-neutral-300 px-3 py-2.5 text-sm"
+                      placeholder={INPUT_PLACEHOLDER.boothFee}
+                      value={draft.boothFee}
+                      onChange={(e) => setField("boothFee", e.target.value)}
+                    />
+                    <span className="shrink-0 text-sm text-neutral-500">税込</span>
+                  </div>
+                  {errors.boothFee ? <p className="mt-1 text-xs text-red-600">{errors.boothFee}</p> : null}
                 </div>
               </div>
-              {errors.boothFee ? (
-                <p className="-mt-4 text-xs text-red-600 md:ml-[180px]">{errors.boothFee}</p>
-              ) : null}
 
               {detailFields.map(({ key, label, required, kind }) => (
                 <div key={key} className="grid gap-5 md:grid-cols-[180px_minmax(0,1fr)] md:items-start">

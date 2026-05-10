@@ -46,15 +46,6 @@ function IconEventAdd({ className }: { className?: string }) {
   );
 }
 
-function IconInbox({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-      <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-    </svg>
-  );
-}
-
 function IconStar({ className }: { className?: string }) {
   return (
     <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -102,15 +93,6 @@ const navLinks: NavLinkConfig[] = [
   { href: "/admin", label: "プロフィール設定", Icon: IconProfile, isActive: (p) => normalizePath(p) === "/admin" },
   { href: "/admin/events", label: "イベント掲載一覧", Icon: IconList, isActive: (p) => normalizePath(p) === "/admin/events" },
   { href: "/admin/events/new", label: "イベント登録", Icon: IconEventAdd, isActive: (p) => normalizePath(p).startsWith("/admin/events/new") },
-  {
-    href: "/admin/applications",
-    label: "掲載申請一覧",
-    Icon: IconInbox,
-    isActive: (p) => {
-      const path = normalizePath(p);
-      return path === "/admin/applications" || path.startsWith("/admin/applications/");
-    },
-  },
   {
     href: "/admin/vendor-reviews",
     label: "出店者評価",
@@ -222,7 +204,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <div className="flex min-h-0 flex-1 md:flex-row">
-        <aside className="hidden border-r border-neutral-200 bg-white md:block md:w-56 md:shrink-0">
+        <aside className="hidden border-r border-neutral-200 bg-white md:fixed md:bottom-0 md:left-0 md:top-20 md:z-40 md:block md:w-56 md:shrink-0 md:overflow-y-auto">
           <nav className="px-2 py-4">
             <ul className="space-y-0.5">
               {navLinks.map((item) => {
@@ -248,7 +230,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </nav>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col md:pl-56">
           <header className="border-b border-neutral-200 bg-white px-4 py-2 md:hidden">
             <nav className="flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
               {navLinks.map((item) => {

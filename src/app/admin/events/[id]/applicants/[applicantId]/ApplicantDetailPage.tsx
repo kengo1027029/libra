@@ -7,6 +7,17 @@ import { AdminShell } from "@/components/admin/AdminShell";
 import { hasAdminSession } from "@/lib/admin-session";
 import { getApplicantProfileForEvent } from "@/lib/admin-event-applicants";
 
+function isSnsLinkable(raw: string): boolean {
+  const t = raw.trim();
+  return t.length > 0 && t !== "-";
+}
+
+function snsHref(raw: string): string {
+  const t = raw.trim();
+  if (/^https?:\/\//i.test(t)) return t;
+  return `https://${t}`;
+}
+
 export function ApplicantDetailPage({
   eventId,
   applicantId,
@@ -50,18 +61,31 @@ export function ApplicantDetailPage({
 
   return (
     <AdminShell>
-      <div className="mx-auto max-w-5xl">
-        <section className="rounded-2xl border border-neutral-200 bg-white px-6 py-8 shadow-sm md:px-14 md:py-10">
+      <div className="mx-auto max-w-[1400px] px-0">
+        <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
           <h1 className="text-3xl font-semibold tracking-tight text-neutral-900">出店者情報</h1>
 
-          <dl className="mt-10 divide-y divide-neutral-200">
+          <dl className="mx-auto mt-10 max-w-4xl divide-y divide-neutral-200">
             {rows.map(([label, value]) => (
               <div
                 key={label}
                 className="grid grid-cols-1 gap-2 py-5 text-sm md:grid-cols-[160px_minmax(0,1fr)] md:items-center md:gap-6 md:py-6"
               >
                 <dt className="font-medium text-neutral-600">{label}</dt>
-                <dd className="break-words font-medium text-neutral-900">{value}</dd>
+                <dd className="break-words font-medium text-neutral-900">
+                  {label === "sns" && isSnsLinkable(value) ? (
+                    <a
+                      href={snsHref(value)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline-offset-2 hover:underline"
+                    >
+                      {value}
+                    </a>
+                  ) : (
+                    value
+                  )}
+                </dd>
               </div>
             ))}
           </dl>

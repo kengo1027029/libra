@@ -25,6 +25,17 @@ function statusSelectClass(status: ContactStatus) {
   return "bg-amber-50 text-amber-900 ring-amber-500/20";
 }
 
+/** フィルター対象外（例: 入金済み）。フィルター未選択時のみ一覧に残す。 */
+function isOutsideContactFilters(status: ContactStatus): boolean {
+  return (status as string) === "入金済み";
+}
+
+function contactMatchesSelection(status: ContactStatus, selected: ContactStatus[]): boolean {
+  if (selected.length === 0) return true;
+  if (isOutsideContactFilters(status)) return false;
+  return selected.includes(status);
+}
+
 function MenuChevron() {
   return (
     <span className="text-neutral-400" aria-hidden>
@@ -38,6 +49,7 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
   const [ready, setReady] = useState(false);
   const [applicants, setApplicants] = useState<Applicant[]>(() => getApplicantsForEvent(eventId));
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [contactFilters, setContactFilters] = useState<ContactStatus[]>([]);
 
   useEffect(() => {
     if (!hasAdminSession()) {
@@ -75,6 +87,17 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
     return { total, fixed, waitingPayment, waitingReply };
   }, [applicants]);
 
+  const filteredApplicants = useMemo(
+    () => applicants.filter((a) => contactMatchesSelection(a.contactStatus, contactFilters)),
+    [applicants, contactFilters],
+  );
+
+  function toggleContactFilter(status: ContactStatus) {
+    setContactFilters((prev) =>
+      prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status],
+    );
+  }
+
   function onChangeStatus(id: string, next: ContactStatus) {
     setApplicants((prev) =>
       prev.map((row) => (row.id === id ? { ...row, contactStatus: next } : row)),
@@ -93,6 +116,10 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
     }
     console.log("[応募管理]", action, { eventId, applicantId: row.id, name: row.name });
     closeMenu();
+  }
+
+  function navigateToApplicant(applicantId: string) {
+    router.push(`/admin/events/${eventId}/applicants/${applicantId}`);
   }
 
   if (!ready) {
@@ -164,6 +191,50 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
 
         <section className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm md:p-8">
           <h2 className="mb-5 text-lg font-semibold text-neutral-900">応募管理</h2>
+          <div className="mb-4 flex flex-wrap gap-2">
+            {(
+              [
+                {
+                  status: "返信待ち" as const,
+                  count: stats.waitingReply,
+                  activeClass:
+                    "border-sky-400 bg-sky-100 text-sky-900 shadow-inner ring-1 ring-sky-500/25",
+                  idleClass:
+                    "border-neutral-200 bg-white text-neutral-700 hover:border-sky-300 hover:bg-sky-50/80",
+                },
+                {
+                  status: "出店確定" as const,
+                  count: stats.fixed,
+                  activeClass:
+                    "border-emerald-400 bg-emerald-100 text-emerald-900 shadow-inner ring-1 ring-emerald-500/25",
+                  idleClass:
+                    "border-neutral-200 bg-white text-neutral-700 hover:border-emerald-300 hover:bg-emerald-50/80",
+                },
+                {
+                  status: "入金待ち" as const,
+                  count: stats.waitingPayment,
+                  activeClass:
+                    "border-amber-400 bg-amber-100 text-amber-950 shadow-inner ring-1 ring-amber-500/25",
+                  idleClass:
+                    "border-neutral-200 bg-white text-neutral-700 hover:border-amber-300 hover:bg-amber-50/80",
+                },
+              ] as const
+            ).map(({ status, count, activeClass, idleClass }) => {
+              const active = contactFilters.includes(status);
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => toggleContactFilter(status)}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${active ? activeClass : idleClass}`}
+                >
+                  <span>{status}</span>
+                  <span className="tabular-nums text-neutral-600">{count}</span>
+                </button>
+              );
+            })}
+          </div>
           <div className="overflow-x-auto rounded-xl border border-neutral-200 [-webkit-overflow-scrolling:touch]">
             <table className="min-w-[900px] w-full border-collapse text-left text-sm">
               <thead>
@@ -178,14 +249,26 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
                 </tr>
               </thead>
               <tbody>
-                {applicants.map((row) => (
-                  <tr key={row.id} className="border-b border-neutral-100 bg-white hover:bg-neutral-50/70">
+                {filteredApplicants.map((row) => (
+                  <tr
+                    key={row.id}
+                    className="cursor-pointer border-b border-neutral-100 bg-white transition-colors hover:bg-gray-50"
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement | null;
+                      if (!target) return;
+                      if (target.closest("[data-applicant-menu]")) return;
+                      if (target.closest("select")) return;
+                      navigateToApplicant(row.id);
+                    }}
+                  >
                     <td className={`${cellPadding} whitespace-nowrap text-neutral-700`}>{row.entryDate}</td>
                     <td className={`${cellPadding} font-medium text-neutral-900`}>{row.name}</td>
                     <td className={`${cellPadding} text-neutral-700`}>{row.genre}</td>
                     <td className={cellPadding}>
                       <select
                         value={row.contactStatus}
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
                         onChange={(e) => onChangeStatus(row.id, e.target.value as ContactStatus)}
                         className={`h-7 rounded-md px-2.5 text-xs font-medium ring-1 ring-inset focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/25 ${statusSelectClass(
                           row.contactStatus,
@@ -196,15 +279,22 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
                         <option value="入金待ち">入金待ち</option>
                       </select>
                     </td>
-                    <td className={`${cellPadding} text-right`}>
-                      <div className="relative inline-flex justify-end" data-applicant-menu={row.id}>
+                    <td
+                      data-applicant-menu={row.id}
+                      className={`${cellPadding} cursor-default text-right`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="relative inline-flex justify-end">
                         <button
                           type="button"
                           className="rounded-md px-2 py-1 text-lg leading-none text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c32f1]/40"
                           aria-expanded={openMenuId === row.id}
                           aria-haspopup="menu"
                           aria-label={`${row.name} の操作メニュー`}
-                          onClick={() => toggleMenu(row.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleMenu(row.id);
+                          }}
                         >
                           ···
                         </button>
