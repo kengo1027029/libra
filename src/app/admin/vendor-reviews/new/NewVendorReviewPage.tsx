@@ -5,16 +5,21 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { StarRating } from "@/components/admin/StarRating";
+import { loadAdminEvents } from "@/lib/admin-events";
 import { hasAdminSession } from "@/lib/admin-session";
 import {
   appendVendorReview,
   EMPTY_VENDOR_REVIEW_DRAFT,
   formatScore,
+  loadVendorReviewEventNames,
+  saveVendorReviewEventNames,
   type StoredVendorReview,
   type VendorReviewDraft,
 } from "@/lib/admin-vendor-reviews";
 
-type FormErrors = Partial<Record<keyof VendorReviewDraft, string>>;
+type FormErrors = Partial<Record<keyof VendorReviewDraft | "addedEventName", string>>;
+
+const ADD_EVENT_OPTION_VALUE = "__add_new_event_name__";
 
 const SCORE_FIELDS: Array<{ key: "score1" | "score2" | "score3"; label: string; help: string }> = [
   { key: "score1", label: "評価1", help: "対応の丁寧さ" },
@@ -30,6 +35,9 @@ export function NewVendorReviewPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [draft, setDraft] = useState<VendorReviewDraft>(EMPTY_VENDOR_REVIEW_DRAFT);
+  const [eventOptions, setEventOptions] = useState<string[]>([]);
+  const [selectedEventName, setSelectedEventName] = useState("");
+  const [addedEventName, setAddedEventName] = useState("");
   const [errors, setErrors] = useState<FormErrors>({});
   const [formError, setFormError] = useState<string>("");
 
@@ -41,14 +49,27 @@ export function NewVendorReviewPage() {
     setReady(true);
   }, [router]);
 
+  useEffect(() => {
+    const eventTitles = loadAdminEvents()
+      .map((event) => event.title.trim())
+      .filter((title) => title.length > 0);
+    const extraEventNames = loadVendorReviewEventNames();
+    setEventOptions(Array.from(new Set([...eventTitles, ...extraEventNames])));
+  }, []);
+
   function setField<K extends keyof VendorReviewDraft>(key: K, value: VendorReviewDraft[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }
 
-  function validate(data: VendorReviewDraft): FormErrors {
+  function validate(data: VendorReviewDraft, selectedEvent: string, addedEvent: string): FormErrors {
     const next: FormErrors = {};
     if (!data.vendorName.trim()) next.vendorName = "出店者名は必須です。";
+    if (!selectedEvent.trim()) {
+      next.eventName = "イベント名は必須です。";
+    } else if (selectedEvent === ADD_EVENT_OPTION_VALUE && !addedEvent.trim()) {
+      next.addedEventName = "追加するイベント名を入力してください。";
+    }
     if (!data.instagramUrl.trim()) next.instagramUrl = "インスタグラムリンクは必須です。";
     if (!data.score1) next.score1 = "評価1を選択してください。";
     if (!data.score2) next.score2 = "評価2を選択してください。";
@@ -58,18 +79,26 @@ export function NewVendorReviewPage() {
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const next = validate(draft);
+    const resolvedEventName =
+      selectedEventName === ADD_EVENT_OPTION_VALUE ? addedEventName.trim() : selectedEventName.trim();
+    const payload: VendorReviewDraft = { ...draft, eventName: resolvedEventName };
+    const next = validate(payload, selectedEventName, addedEventName);
     setErrors(next);
     if (Object.keys(next).length > 0) {
       setFormError("入力内容を確認してください。");
       return;
     }
     setFormError("");
+    if (selectedEventName === ADD_EVENT_OPTION_VALUE) {
+      saveVendorReviewEventNames([...eventOptions, resolvedEventName]);
+      setEventOptions((prev) => Array.from(new Set([...prev, resolvedEventName])));
+    }
     const now = new Date();
     const stored: StoredVendorReview = {
       id: `vendor-review-${now.getTime()}`,
       createdAt: now.toISOString(),
       vendorName: draft.vendorName.trim(),
+      eventName: resolvedEventName,
       instagramUrl: draft.instagramUrl.trim(),
       score1: draft.score1,
       score2: draft.score2,
@@ -129,6 +158,51 @@ export function NewVendorReviewPage() {
                 {errors.vendorName ? (
                   <p className="mt-1 text-xs text-red-600">{errors.vendorName}</p>
                 ) : null}
+              </div>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-[180px_minmax(0,1fr)] md:items-start">
+              <label htmlFor="eventName" className="pt-2 text-sm font-medium text-neutral-800">
+                イベント名<RequiredMark />
+              </label>
+              <div>
+                <select
+                  id="eventName"
+                  className={inputClass}
+                  value={selectedEventName}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelectedEventName(value);
+                    setErrors((prev) => ({ ...prev, eventName: undefined, addedEventName: undefined }));
+                  }}
+                >
+                  <option value="">イベント名を選択してください</option>
+                  {eventOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                  <option value={ADD_EVENT_OPTION_VALUE}>イベント名を追加する</option>
+                </select>
+                {selectedEventName === ADD_EVENT_OPTION_VALUE ? (
+                  <div className="mt-3">
+                    <input
+                      id="addedEventName"
+                      type="text"
+                      className={inputClass}
+                      value={addedEventName}
+                      onChange={(e) => {
+                        setAddedEventName(e.target.value);
+                        setErrors((prev) => ({ ...prev, addedEventName: undefined }));
+                      }}
+                      placeholder="新しいイベント名を入力"
+                    />
+                    {errors.addedEventName ? (
+                      <p className="mt-1 text-xs text-red-600">{errors.addedEventName}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {errors.eventName ? <p className="mt-1 text-xs text-red-600">{errors.eventName}</p> : null}
               </div>
             </div>
 

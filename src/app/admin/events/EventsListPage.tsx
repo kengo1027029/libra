@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AdminFixedRowMenuPopover } from "@/components/admin/AdminFixedRowMenuPopover";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { hasAdminSession } from "@/lib/admin-session";
-import { loadAdminEvents } from "@/lib/admin-events";
+import {
+  appendAdminArchiveEntry,
+  getArchivedEventIds,
+} from "@/lib/admin-archive";
+import { loadAdminEvents, saveAdminEvents } from "@/lib/admin-events";
 
 type EventStatus = "申請中" | "掲載中" | "下書き" | "差し戻し";
 
@@ -18,18 +23,159 @@ type EventTableRow = {
   applicationPeriod: string;
 };
 
-function toDotDate(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "----.--.--";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}.${m}.${day}`;
+type EventListRow = EventTableRow & {
+  hasApplicationPeriod: boolean;
+};
+
+type StatusFilterValue = "all" | EventStatus;
+
+type ApplicationPeriodFilterValue = "all" | "has" | "none";
+
+type EventSortKey = "entry_desc" | "entry_asc" | "name_asc" | "name_desc";
+
+type ParsedDate = { year: number; month: number; day: number };
+
+function toValidDateParts(year: number, month: number, day: number): ParsedDate | null {
+  const d = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(d.getTime()) ||
+    d.getFullYear() !== year ||
+    d.getMonth() !== month - 1 ||
+    d.getDate() !== day
+  ) {
+    return null;
+  }
+  return { year, month, day };
 }
 
-function formatStorageDate(date: string) {
-  if (!date) return "-";
-  return date.replaceAll("-", "/");
+function parseDate(value: unknown, fallbackYear?: number): ParsedDate | null {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return {
+      year: value.getFullYear(),
+      month: value.getMonth() + 1,
+      day: value.getDate(),
+    };
+  }
+
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw || raw === "-" || raw === "—") return null;
+
+  const normalized = raw.replace(/\s+/g, "");
+  const patterns: Array<{
+    regex: RegExp;
+    map: (m: RegExpExecArray) => { year?: number; month: number; day?: number };
+  }> = [
+    {
+      regex: /^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})$/,
+      map: (m) => ({ year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }),
+    },
+    {
+      regex: /^(\d{4})[\/.-](\d{1,2})[\/.-]?$/,
+      map: (m) => ({ year: Number(m[1]), month: Number(m[2]), day: 1 }),
+    },
+    {
+      regex: /^(\d{4})[\/.-](\d{1,2})$/,
+      map: (m) => ({ year: Number(m[1]), month: Number(m[2]), day: 1 }),
+    },
+    {
+      regex: /^(\d{4})年(\d{1,2})月(\d{1,2})日?$/,
+      map: (m) => ({ year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) }),
+    },
+    {
+      regex: /^(\d{4})年(\d{1,2})月$/,
+      map: (m) => ({ year: Number(m[1]), month: Number(m[2]), day: 1 }),
+    },
+    {
+      regex: /^(\d{1,2})[\/.-](\d{1,2})$/,
+      map: (m) => ({ month: Number(m[1]), day: Number(m[2]) }),
+    },
+    {
+      regex: /^(\d{1,2})月(\d{1,2})日?$/,
+      map: (m) => ({ month: Number(m[1]), day: Number(m[2]) }),
+    },
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.regex.exec(normalized);
+    if (!match) continue;
+    const result = pattern.map(match);
+    const year = result.year ?? fallbackYear;
+    const day = result.day ?? 1;
+    if (!year) return null;
+    return toValidDateParts(year, result.month, day);
+  }
+
+  const parsedByDate = new Date(normalized);
+  if (!Number.isNaN(parsedByDate.getTime())) {
+    return {
+      year: parsedByDate.getFullYear(),
+      month: parsedByDate.getMonth() + 1,
+      day: parsedByDate.getDate(),
+    };
+  }
+
+  return null;
+}
+
+function formatDate(value: unknown, fallbackYear?: number): string {
+  const parsed = parseDate(value, fallbackYear);
+  if (!parsed) return "-";
+  const yyyy = String(parsed.year).padStart(4, "0");
+  const mm = String(parsed.month).padStart(2, "0");
+  const dd = String(parsed.day).padStart(2, "0");
+  return `${yyyy}/${mm}/${dd}`;
+}
+
+function formatApplicationPeriod(period: string): string {
+  if (!period || period === "—" || period === "-") return "-";
+  const [rawStart, rawEnd] = period.split(/[〜～~]/);
+  if (!rawStart || !rawEnd) return "-";
+  const startParsed = parseDate(rawStart);
+  if (!startParsed) return "-";
+  const startDate = formatDate(startParsed);
+  const endDate = formatDate(rawEnd, startParsed.year);
+  if (startDate === "-" || endDate === "-") return "-";
+  return `${startDate}〜${endDate}`;
+}
+
+function pickApplicationDateValue(event: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    if (!(key in event)) continue;
+    const value = event[key];
+    if (value === null || value === undefined) continue;
+    if (typeof value === "string" && value.trim() === "") continue;
+    return value;
+  }
+  return "";
+}
+
+function formatApplicationPeriodFromDates(startValue: unknown, endValue: unknown): string {
+  const startDate = formatDate(startValue);
+  const endDate = formatDate(endValue);
+  if (startDate === "-" || endDate === "-") return "-";
+  return `${startDate}〜${endDate}`;
+}
+
+function isFilledApplicationDateValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string" && value.trim() === "") return false;
+  return parseDate(value) !== null;
+}
+
+function mockRowHasApplicationPeriodFromPeriodField(period: string): boolean {
+  if (!period || period === "—" || period === "-") return false;
+  const [rawStart, rawEnd] = period.split(/[〜～~]/);
+  const startParsed = parseDate(rawStart?.trim() ?? "");
+  if (!startParsed || !(rawEnd?.trim())) return false;
+  return parseDate(rawEnd.trim(), startParsed.year) !== null;
+}
+
+function entryDateSortTimestamp(entryDateDisplay: string): number {
+  const parsed = parseDate(entryDateDisplay);
+  if (!parsed) return 0;
+  return new Date(parsed.year, parsed.month - 1, parsed.day).getTime();
 }
 
 /** EventDetailPage の EVENT_TITLE_MAP と対応するモックのみ詳細ありとして行クリック遷移可 */
@@ -142,13 +288,41 @@ function MenuChevron() {
   );
 }
 
-type MenuAction = "詳細を見る" | "編集" | "複製" | "削除";
+type MenuAction = "詳細を見る" | "編集" | "アーカイブ";
+
+const STATUS_FILTER_OPTIONS: Array<{ value: StatusFilterValue; label: string }> = [
+  { value: "all", label: "すべてのステータス" },
+  { value: "申請中", label: "申請中" },
+  { value: "掲載中", label: "掲載中" },
+  { value: "下書き", label: "下書き" },
+  { value: "差し戻し", label: "差し戻し" },
+];
+
+const APPLICATION_PERIOD_FILTER_OPTIONS: Array<{ value: ApplicationPeriodFilterValue; label: string }> = [
+  { value: "all", label: "すべての応募期間" },
+  { value: "has", label: "応募期間あり" },
+  { value: "none", label: "応募期間なし" },
+];
+
+const SORT_OPTIONS: Array<{ value: EventSortKey; label: string }> = [
+  { value: "entry_desc", label: "記入日が新しい順" },
+  { value: "entry_asc", label: "記入日が古い順" },
+  { value: "name_asc", label: "イベント名 昇順" },
+  { value: "name_desc", label: "イベント名 降順" },
+];
 
 export function EventsListPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [storedRows, setStoredRows] = useState<EventTableRow[]>([]);
+  const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [storedRows, setStoredRows] = useState<EventListRow[]>([]);
+  const [hiddenArchivedEventIds, setHiddenArchivedEventIds] = useState<Set<string>>(() => new Set());
+  const [nameQuery, setNameQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("all");
+  const [applicationPeriodFilter, setApplicationPeriodFilter] =
+    useState<ApplicationPeriodFilterValue>("all");
+  const [sortKey, setSortKey] = useState<EventSortKey>("entry_desc");
 
   useEffect(() => {
     if (!hasAdminSession()) {
@@ -156,34 +330,39 @@ export function EventsListPage() {
       return;
     }
     setReady(true);
-    const fromStorage = loadAdminEvents().map((event) => ({
-      id: event.id,
-      entryDate: toDotDate(event.createdAt),
-      name: event.title,
-      status: "申請中" as const,
-      publishDate: "-",
-      applicationPeriod: `${formatStorageDate(event.applicationStartDate)}〜${formatStorageDate(event.applicationEndDate)}`,
-    }));
+    const events = loadAdminEvents();
+    const fromStorage = events.map((event) => {
+      const rawEvent = event as Record<string, unknown>;
+      const applicationStartDate = pickApplicationDateValue(rawEvent, [
+        "applicationStartDate",
+        "applicationPeriodStart",
+        "recruitmentStartDate",
+        "applicationStart",
+      ]);
+      const applicationEndDate = pickApplicationDateValue(rawEvent, [
+        "applicationEndDate",
+        "applicationPeriodEnd",
+        "recruitmentEndDate",
+        "applicationEnd",
+      ]);
+      const hasApplicationPeriod =
+        isFilledApplicationDateValue(applicationStartDate) &&
+        isFilledApplicationDateValue(applicationEndDate);
+      return {
+        id: event.id,
+        entryDate: formatDate(event.createdAt),
+        name: event.title,
+        status: event.status,
+        publishDate: event.publishedAt,
+        applicationPeriod: formatApplicationPeriodFromDates(applicationStartDate, applicationEndDate),
+        hasApplicationPeriod,
+      };
+    });
     setStoredRows(fromStorage);
+    setHiddenArchivedEventIds(getArchivedEventIds());
   }, [router]);
 
   const closeMenu = useCallback(() => setOpenMenuId(null), []);
-
-  useEffect(() => {
-    if (!openMenuId) return;
-
-    function handlePointerDown(e: PointerEvent) {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      const root = target.closest("[data-event-row-menu]");
-      const rid = root?.getAttribute("data-event-row-menu");
-      if (rid === openMenuId) return;
-      closeMenu();
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [openMenuId, closeMenu]);
 
   function toggleMenu(rowId: string) {
     setOpenMenuId((current) => (current === rowId ? null : rowId));
@@ -195,11 +374,116 @@ export function EventsListPage() {
       closeMenu();
       return;
     }
+    if (action === "アーカイブ") {
+      closeMenu();
+      const ok = window.confirm("このデータをアーカイブしますか？");
+      if (!ok) return;
+      const isStored = storedRows.some((r) => r.id === row.id);
+      if (isStored) {
+        const events = loadAdminEvents();
+        const found = events.find((e) => e.id === row.id);
+        if (found) {
+          saveAdminEvents(events.filter((e) => e.id !== row.id));
+          setStoredRows((prev) => prev.filter((r) => r.id !== row.id));
+          appendAdminArchiveEntry({
+            source: "events",
+            sourceLabel: "イベント掲載一覧",
+            title: found.title,
+            description: `${found.status} · 応募期間 ${formatApplicationPeriodFromDates(found.applicationStartDate, found.applicationEndDate)}`,
+            originalData: found,
+          });
+        } else {
+          setStoredRows((prev) => prev.filter((r) => r.id !== row.id));
+          appendAdminArchiveEntry({
+            source: "events",
+            sourceLabel: "イベント掲載一覧",
+            title: row.name,
+            description: `${row.status} · 応募期間 ${row.applicationPeriod} · 公開日 ${row.publishDate}`,
+            originalData: {
+              id: row.id,
+              entryDate: row.entryDate,
+              name: row.name,
+              status: row.status,
+              publishDate: row.publishDate,
+              applicationPeriod: row.applicationPeriod,
+            },
+          });
+        }
+      } else {
+        appendAdminArchiveEntry({
+          source: "events",
+          sourceLabel: "イベント掲載一覧",
+          title: row.name,
+          description: `${row.status} · 応募期間 ${row.applicationPeriod} · 公開日 ${row.publishDate}`,
+          originalData: {
+            id: row.id,
+            entryDate: row.entryDate,
+            name: row.name,
+            status: row.status,
+            publishDate: row.publishDate,
+            applicationPeriod: row.applicationPeriod,
+          },
+        });
+      }
+      setHiddenArchivedEventIds((prev) => new Set(prev).add(row.id));
+      router.push("/admin/archive");
+      return;
+    }
     console.log("[イベント一覧]", action, { rowId: row.id, eventName: row.name });
     closeMenu();
   }
 
-  const allRows = useMemo(() => [...storedRows, ...MOCK_EVENTS], [storedRows]);
+  const allRows = useMemo((): EventListRow[] => {
+    const fromMock: EventListRow[] = MOCK_EVENTS.map((row) => ({
+      ...row,
+      hasApplicationPeriod: mockRowHasApplicationPeriodFromPeriodField(row.applicationPeriod),
+    }));
+    const merged = [...storedRows, ...fromMock].map((row) => ({
+      ...row,
+      entryDate: formatDate(row.entryDate),
+      publishDate: formatDate(row.publishDate),
+      applicationPeriod: formatApplicationPeriod(row.applicationPeriod),
+    }));
+    return merged.filter((row) => !hiddenArchivedEventIds.has(row.id));
+  }, [storedRows, hiddenArchivedEventIds]);
+
+  const filteredRows = useMemo(() => {
+    const q = nameQuery.trim().toLowerCase();
+    const list = allRows.filter((row) => {
+      if (q && !row.name.toLowerCase().includes(q)) return false;
+      if (statusFilter !== "all" && row.status !== statusFilter) return false;
+      if (applicationPeriodFilter === "has" && !row.hasApplicationPeriod) return false;
+      if (applicationPeriodFilter === "none" && row.hasApplicationPeriod) return false;
+      return true;
+    });
+
+    return [...list].sort((a, b) => {
+      switch (sortKey) {
+        case "entry_desc":
+          return entryDateSortTimestamp(b.entryDate) - entryDateSortTimestamp(a.entryDate);
+        case "entry_asc":
+          return entryDateSortTimestamp(a.entryDate) - entryDateSortTimestamp(b.entryDate);
+        case "name_asc":
+          return a.name.localeCompare(b.name, "ja");
+        case "name_desc":
+          return b.name.localeCompare(a.name, "ja");
+        default:
+          return 0;
+      }
+    });
+  }, [allRows, nameQuery, statusFilter, applicationPeriodFilter, sortKey]);
+
+  const openMenuRow = useMemo(
+    () => (openMenuId ? (allRows.find((r) => r.id === openMenuId) ?? null) : null),
+    [openMenuId, allRows],
+  );
+
+  function resetFilters() {
+    setNameQuery("");
+    setStatusFilter("all");
+    setApplicationPeriodFilter("all");
+    setSortKey("entry_desc");
+  }
 
   const storedIds = useMemo(() => new Set(storedRows.map((r) => r.id)), [storedRows]);
 
@@ -222,7 +506,7 @@ export function EventsListPage() {
 
   return (
     <AdminShell>
-      <div className="mx-auto max-w-[1400px] px-0">
+      <div className="mx-auto w-full max-w-[1440px] px-0">
         <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <header className="space-y-1">
@@ -260,7 +544,81 @@ export function EventsListPage() {
             </Link>
           </div>
 
-          <div className="mt-8 overflow-x-auto rounded-xl border border-neutral-200 [-webkit-overflow-scrolling:touch]">
+          <div className="mt-8 grid grid-cols-1 gap-5 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+            <div>
+              <label htmlFor="event-name-search" className="sr-only">
+                イベント名で検索
+              </label>
+              <input
+                id="event-name-search"
+                type="search"
+                value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)}
+                placeholder="イベント名で検索"
+                className="h-10 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-[#2c32f1] focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/20"
+              />
+            </div>
+            <div>
+              <label htmlFor="event-status-filter" className="sr-only">
+                掲載ステータス
+              </label>
+              <select
+                id="event-status-filter"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilterValue)}
+                className="h-10 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus:border-[#2c32f1] focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/20"
+              >
+                {STATUS_FILTER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="event-application-period-filter" className="sr-only">
+                応募期間
+              </label>
+              <select
+                id="event-application-period-filter"
+                value={applicationPeriodFilter}
+                onChange={(e) => setApplicationPeriodFilter(e.target.value as ApplicationPeriodFilterValue)}
+                className="h-10 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus:border-[#2c32f1] focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/20"
+              >
+                {APPLICATION_PERIOD_FILTER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="event-sort-key" className="sr-only">
+                並び替え
+              </label>
+              <select
+                id="event-sort-key"
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as EventSortKey)}
+                className="h-10 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus:border-[#2c32f1] focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/20"
+              >
+                {SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="h-10 shrink-0 rounded-lg border border-neutral-300 bg-white px-4 text-sm font-medium text-neutral-700 transition hover:bg-neutral-100 md:justify-self-start"
+            >
+              リセット
+            </button>
+          </div>
+
+          <div className="mt-6 overflow-x-auto rounded-xl border border-neutral-200 [-webkit-overflow-scrolling:touch]">
             <table className="min-w-[1120px] w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-neutral-200 bg-neutral-50">
@@ -288,7 +646,14 @@ export function EventsListPage() {
                 </tr>
               </thead>
               <tbody>
-                {allRows.map((row) => {
+                {filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-12 text-center text-sm text-neutral-500">
+                      条件に一致するイベントがありません。
+                    </td>
+                  </tr>
+                ) : null}
+                {filteredRows.map((row) => {
                   const isReturned = row.status === "差し戻し";
                   const rowText = isReturned ? "text-red-700" : "text-neutral-900";
                   const rowMuted = isReturned ? "text-red-700/85" : "text-neutral-700";
@@ -341,6 +706,9 @@ export function EventsListPage() {
                           <button
                             type="button"
                             className={menuBtnClass}
+                            ref={(el) => {
+                              menuButtonRefs.current[row.id] = el;
+                            }}
                             aria-expanded={openMenuId === row.id}
                             aria-haspopup="menu"
                             aria-label={`${row.name} の操作メニュー`}
@@ -351,51 +719,6 @@ export function EventsListPage() {
                           >
                             ···
                           </button>
-                          {openMenuId === row.id ? (
-                            <div
-                              role="menu"
-                              className="absolute right-0 top-full z-30 mt-1 min-w-[11rem] rounded-lg border border-neutral-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
-                            >
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-neutral-900 hover:bg-neutral-50"
-                                onClick={() => handleMenuAction(row, "詳細を見る")}
-                              >
-                                詳細を見る
-                                <MenuChevron />
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-neutral-900 hover:bg-neutral-50"
-                                onClick={() => handleMenuAction(row, "編集")}
-                              >
-                                編集
-                                <MenuChevron />
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-neutral-900 hover:bg-neutral-50"
-                                onClick={() => handleMenuAction(row, "複製")}
-                              >
-                                複製
-                                <MenuChevron />
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-red-50"
-                                onClick={() => handleMenuAction(row, "削除")}
-                              >
-                                削除
-                                <span className="text-red-400" aria-hidden>
-                                  ›
-                                </span>
-                              </button>
-                            </div>
-                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -406,6 +729,47 @@ export function EventsListPage() {
           </div>
         </section>
       </div>
+      {openMenuId && openMenuRow ? (
+        <AdminFixedRowMenuPopover
+          openMenuId={openMenuId}
+          getAnchorEl={() => menuButtonRefs.current[openMenuId] ?? null}
+          rowMenuRootAttr="data-event-row-menu"
+          estimatedMenuHeight={132}
+          estimatedMenuWidth={180}
+          menuPanelClassName="min-w-[10.5rem] py-0.5"
+          onClose={closeMenu}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-neutral-900 hover:bg-neutral-50"
+            onClick={() => handleMenuAction(openMenuRow, "詳細を見る")}
+          >
+            詳細を見る
+            <MenuChevron />
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-neutral-900 hover:bg-neutral-50"
+            onClick={() => handleMenuAction(openMenuRow, "編集")}
+          >
+            編集
+            <MenuChevron />
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-medium text-red-500 hover:bg-red-50 hover:text-red-600"
+            onClick={() => handleMenuAction(openMenuRow, "アーカイブ")}
+          >
+            アーカイブ
+            <span className="text-red-400" aria-hidden>
+              ›
+            </span>
+          </button>
+        </AdminFixedRowMenuPopover>
+      ) : null}
     </AdminShell>
   );
 }

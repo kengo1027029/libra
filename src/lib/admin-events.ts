@@ -28,6 +28,7 @@ export type AdminEventDraft = {
 export type StoredAdminEvent = {
   id: string;
   createdAt: string;
+  publishedAt: string;
   status: AdminEventStatus;
   topImageName: string;
   title: string;
@@ -80,6 +81,7 @@ function isStoredAdminEvent(value: unknown): value is StoredAdminEvent {
   return (
     typeof o.id === "string" &&
     typeof o.createdAt === "string" &&
+    typeof o.publishedAt === "string" &&
     (o.status === "申請中" || o.status === "掲載中" || o.status === "下書き" || o.status === "差し戻し") &&
     typeof o.topImageName === "string" &&
     typeof o.title === "string" &&
@@ -102,25 +104,39 @@ function isStoredAdminEvent(value: unknown): value is StoredAdminEvent {
   );
 }
 
+function pickStringField(obj: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string") return value;
+  }
+  return "";
+}
+
 function normalizeStoredAdminEvent(value: unknown): StoredAdminEvent | null {
   if (!value || typeof value !== "object") return null;
   const o = value as Record<string, unknown>;
   const candidate: Record<string, unknown> = {
     ...o,
-    applicationStartDate:
-      typeof o.applicationStartDate === "string"
-        ? o.applicationStartDate
-        : typeof o.recruitStartDate === "string"
-          ? o.recruitStartDate
-          : "",
-    applicationEndDate:
-      typeof o.applicationEndDate === "string"
-        ? o.applicationEndDate
-        : typeof o.recruitEndDate === "string"
-          ? o.recruitEndDate
-          : "",
+    publishedAt: typeof o.publishedAt === "string" ? o.publishedAt : "",
+    applicationStartDate: pickStringField(o, [
+      "applicationStartDate",
+      "applicationPeriodStart",
+      "recruitmentStartDate",
+      "applicationStart",
+    ]),
+    applicationEndDate: pickStringField(o, [
+      "applicationEndDate",
+      "applicationPeriodEnd",
+      "recruitmentEndDate",
+      "applicationEnd",
+    ]),
   };
   return isStoredAdminEvent(candidate) ? (candidate as StoredAdminEvent) : null;
+}
+
+/** アーカイブ復元など、任意のJSONから1件だけ正規化する用途 */
+export function tryParseStoredAdminEvent(value: unknown): StoredAdminEvent | null {
+  return normalizeStoredAdminEvent(value);
 }
 
 export function loadAdminEvents(): StoredAdminEvent[] {

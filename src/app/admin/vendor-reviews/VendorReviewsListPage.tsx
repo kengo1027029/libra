@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { StarRating } from "@/components/admin/StarRating";
@@ -36,8 +37,15 @@ export function VendorReviewsListPage() {
   const [summaries, setSummaries] = useState<VendorReviewSummary[]>([]);
   const [keyword, setKeyword] = useState("");
   const [overallFilter, setOverallFilter] = useState<(typeof OVERALL_FILTER_OPTIONS)[number]["value"]>("all");
+  const [eventNameFilter, setEventNameFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("overall_desc");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    left: number;
+    direction: "up" | "down";
+  } | null>(null);
+  const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     if (!hasAdminSession()) {
@@ -57,12 +65,25 @@ export function VendorReviewsListPage() {
       if (!target) return;
       const root = target.closest("[data-vendor-row-menu]");
       const rid = root?.getAttribute("data-vendor-row-menu");
-      if (rid === openMenuId) return;
+      const popoverRid = target.getAttribute("data-vendor-row-menu-popover");
+      if (rid === openMenuId || popoverRid === openMenuId) return;
       closeMenu();
     }
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [openMenuId, closeMenu]);
+
+  const eventNameOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const summary of summaries) {
+      for (const review of summary.reviews) {
+        const name = review.eventName.trim();
+        if (!name) continue;
+        names.add(name);
+      }
+    }
+    return ["all", ...Array.from(names).sort((a, b) => a.localeCompare(b, "ja"))];
+  }, [summaries]);
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -71,6 +92,12 @@ export function VendorReviewsListPage() {
     const list = summaries.filter((s) => {
       if (kw && !s.vendorName.toLowerCase().includes(kw)) return false;
       if (s.overallScore < min) return false;
+      if (
+        eventNameFilter !== "all" &&
+        !s.reviews.some((review) => review.eventName.trim() === eventNameFilter)
+      ) {
+        return false;
+      }
       return true;
     });
 
@@ -88,22 +115,60 @@ export function VendorReviewsListPage() {
     });
 
     return list;
-  }, [summaries, keyword, overallFilter, sortKey]);
+  }, [summaries, keyword, overallFilter, eventNameFilter, sortKey]);
 
   function resetFilters() {
     setKeyword("");
     setOverallFilter("all");
+    setEventNameFilter("all");
     setSortKey("overall_desc");
   }
 
   function toggleMenu(id: string) {
-    setOpenMenuId((current) => (current === id ? null : id));
+    setOpenMenuId((current) => {
+      if (current === id) {
+        setMenuPosition(null);
+        return null;
+      }
+      const button = menuButtonRefs.current[id];
+      if (!button) {
+        setMenuPosition(null);
+        return id;
+      }
+      const rect = button.getBoundingClientRect();
+      const gap = 6;
+      const estimatedMenuHeight = 56;
+      const roomBelow = window.innerHeight - rect.bottom;
+      const roomAbove = rect.top;
+      const direction: "up" | "down" =
+        roomBelow < estimatedMenuHeight && roomAbove > roomBelow ? "up" : "down";
+
+      setMenuPosition({
+        top: direction === "down" ? rect.bottom + gap : rect.top - gap,
+        left: rect.right,
+        direction,
+      });
+      return id;
+    });
   }
 
   function handleViewDetail(id: string) {
     router.push(`/admin/vendor-reviews/${id}`);
     closeMenu();
   }
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    function handleViewportChange() {
+      closeMenu();
+    }
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [openMenuId, closeMenu]);
 
   if (!ready) {
     return (
@@ -119,7 +184,7 @@ export function VendorReviewsListPage() {
 
   return (
     <AdminShell>
-      <div className="mx-auto max-w-[1400px] px-0">
+      <div className="mx-auto w-full max-w-[1440px] px-0">
         <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <header className="space-y-1">
@@ -152,7 +217,7 @@ export function VendorReviewsListPage() {
             </Link>
           </div>
 
-          <div className="mt-8 grid gap-3 rounded-xl border border-neutral-200 bg-neutral-50/70 p-4 md:grid-cols-[1.4fr_1fr_1fr_auto] md:items-center">
+          <div className="mt-8 grid gap-3 rounded-xl border border-neutral-200 bg-neutral-50/70 p-4 md:grid-cols-[1.4fr_1fr_1fr_1fr_auto] md:items-center">
             <div>
               <label htmlFor="vendor-search" className="sr-only">
                 出店者名で検索
@@ -181,6 +246,26 @@ export function VendorReviewsListPage() {
                     {o.label}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="event-name-filter" className="sr-only">
+                イベント名フィルター
+              </label>
+              <select
+                id="event-name-filter"
+                value={eventNameFilter}
+                onChange={(e) => setEventNameFilter(e.target.value)}
+                className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 focus:border-[#2c32f1] focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/20"
+              >
+                <option value="all">全てのイベント</option>
+                {eventNameOptions
+                  .filter((name) => name !== "all")
+                  .map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
               </select>
             </div>
             <div>
@@ -216,6 +301,9 @@ export function VendorReviewsListPage() {
                   <th scope="col" className={`${cellPadding} min-w-[12rem] font-semibold text-neutral-700`}>
                     出店者名
                   </th>
+                  <th scope="col" className={`${cellPadding} min-w-[12rem] font-semibold text-neutral-700`}>
+                    イベント名
+                  </th>
                   <th scope="col" className={`${cellPadding} whitespace-nowrap font-semibold text-neutral-700`}>
                     評価1
                   </th>
@@ -243,7 +331,7 @@ export function VendorReviewsListPage() {
                 {filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-4 py-12 text-center text-sm text-neutral-500"
                     >
                       評価がまだありません。「評価入力する」から登録できます。
@@ -253,16 +341,20 @@ export function VendorReviewsListPage() {
                   filtered.map((row) => (
                     <tr
                       key={row.id}
-                      className="border-b border-neutral-100 bg-white transition-colors hover:bg-neutral-50/70"
+                      onClick={() => handleViewDetail(row.id)}
+                      className="cursor-pointer border-b border-neutral-100 bg-white transition-colors hover:bg-gray-50"
                     >
                       <td className={`${cellPadding} font-medium text-neutral-900`}>
-                        <button
-                          type="button"
-                          onClick={() => handleViewDetail(row.id)}
-                          className="text-left text-neutral-900 transition hover:text-[#2c32f1] hover:underline"
-                        >
-                          {row.vendorName}
-                        </button>
+                        {row.vendorName}
+                      </td>
+                      <td className={`${cellPadding} text-neutral-700`}>
+                        {Array.from(
+                          new Set(
+                            row.reviews
+                              .map((review) => review.eventName.trim())
+                              .filter((name) => name.length > 0),
+                          ),
+                        ).join(" / ") || "-"}
                       </td>
                       <td className={`${cellPadding} whitespace-nowrap`}>
                         <ScoreCell score={row.averageScore1} />
@@ -274,12 +366,9 @@ export function VendorReviewsListPage() {
                         <ScoreCell score={row.averageScore3} />
                       </td>
                       <td className={`${cellPadding} whitespace-nowrap`}>
-                        <div className="flex items-center gap-2">
-                          <StarRating value={Math.round(row.overallScore)} readOnly size={18} />
-                          <span className="text-sm font-semibold text-neutral-900">
-                            {formatScore(row.overallScore)}
-                          </span>
-                        </div>
+                        <span className="text-sm font-semibold text-neutral-900">
+                          {formatScore(row.overallScore)}
+                        </span>
                       </td>
                       <td className={`${cellPadding} whitespace-nowrap text-neutral-700`}>
                         {row.commentCount}
@@ -291,31 +380,19 @@ export function VendorReviewsListPage() {
                           <button
                             type="button"
                             className={menuBtnClass}
+                            ref={(el) => {
+                              menuButtonRefs.current[row.id] = el;
+                            }}
                             aria-expanded={openMenuId === row.id}
                             aria-haspopup="menu"
                             aria-label={`${row.vendorName} の操作メニュー`}
-                            onClick={() => toggleMenu(row.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleMenu(row.id);
+                            }}
                           >
                             ···
                           </button>
-                          {openMenuId === row.id ? (
-                            <div
-                              role="menu"
-                              className="absolute right-0 top-full z-30 mt-1 min-w-[11rem] rounded-lg border border-neutral-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
-                            >
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-neutral-900 hover:bg-neutral-50"
-                                onClick={() => handleViewDetail(row.id)}
-                              >
-                                詳細を見る
-                                <span className="text-neutral-400" aria-hidden>
-                                  ›
-                                </span>
-                              </button>
-                            </div>
-                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -326,6 +403,37 @@ export function VendorReviewsListPage() {
           </div>
         </section>
       </div>
+      {openMenuId && menuPosition
+        ? createPortal(
+            <div
+              role="menu"
+              data-vendor-row-menu-popover={openMenuId}
+              className="fixed z-[120] min-w-[11rem] rounded-lg border border-neutral-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
+              style={{
+                top: menuPosition.top,
+                left: menuPosition.left,
+                transform:
+                  menuPosition.direction === "down"
+                    ? "translate(-100%, 0)"
+                    : "translate(-100%, -100%)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-neutral-900 hover:bg-neutral-50"
+                onClick={() => handleViewDetail(openMenuId)}
+              >
+                詳細を見る
+                <span className="text-neutral-400" aria-hidden>
+                  ›
+                </span>
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </AdminShell>
   );
 }

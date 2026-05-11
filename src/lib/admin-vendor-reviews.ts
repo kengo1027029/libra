@@ -1,7 +1,9 @@
 export const ADMIN_VENDOR_REVIEWS_STORAGE_KEY = "libra_vendor_reviews";
+export const VENDOR_REVIEW_EVENT_NAMES_STORAGE_KEY = "libra_vendor_review_event_names";
 
 export type VendorReviewDraft = {
   vendorName: string;
+  eventName: string;
   instagramUrl: string;
   score1: number;
   score2: number;
@@ -13,6 +15,7 @@ export type StoredVendorReview = {
   id: string;
   createdAt: string;
   vendorName: string;
+  eventName: string;
   instagramUrl: string;
   score1: number;
   score2: number;
@@ -22,6 +25,7 @@ export type StoredVendorReview = {
 
 export const EMPTY_VENDOR_REVIEW_DRAFT: VendorReviewDraft = {
   vendorName: "",
+  eventName: "",
   instagramUrl: "",
   score1: 0,
   score2: 0,
@@ -33,10 +37,11 @@ function isScore(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 5;
 }
 
-/** レガシーJSONに eventName があっても無視し、正規化したオブジェクトのみ返す */
+/** レガシーJSONを正規化し、eventName がない場合は空文字で補完して返す */
 function parseStoredVendorReview(value: unknown): StoredVendorReview | null {
   if (!value || typeof value !== "object") return null;
   const o = value as Record<string, unknown>;
+  const eventName = typeof o.eventName === "string" ? o.eventName : "";
   if (
     typeof o.id !== "string" ||
     typeof o.createdAt !== "string" ||
@@ -53,12 +58,18 @@ function parseStoredVendorReview(value: unknown): StoredVendorReview | null {
     id: o.id,
     createdAt: o.createdAt,
     vendorName: o.vendorName,
+    eventName,
     instagramUrl: o.instagramUrl,
     score1: o.score1,
     score2: o.score2,
     score3: o.score3,
     reason: o.reason,
   };
+}
+
+/** アーカイブ復元など、任意のJSONから1件だけ正規化する用途 */
+export function tryParseStoredVendorReview(value: unknown): StoredVendorReview | null {
+  return parseStoredVendorReview(value);
 }
 
 export function loadVendorReviews(): StoredVendorReview[] {
@@ -81,6 +92,29 @@ export function saveVendorReviews(reviews: StoredVendorReview[]): void {
 export function appendVendorReview(review: StoredVendorReview): void {
   const current = loadVendorReviews();
   saveVendorReviews([review, ...current]);
+}
+
+export function loadVendorReviewEventNames(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(VENDOR_REVIEW_EVENT_NAMES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((name): name is string => typeof name === "string")
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+export function saveVendorReviewEventNames(names: string[]): void {
+  const unique = Array.from(
+    new Set(names.map((name) => name.trim()).filter((name) => name.length > 0)),
+  );
+  localStorage.setItem(VENDOR_REVIEW_EVENT_NAMES_STORAGE_KEY, JSON.stringify(unique));
 }
 
 export type VendorReviewSummary = {

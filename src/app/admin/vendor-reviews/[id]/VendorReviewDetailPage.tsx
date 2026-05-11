@@ -108,7 +108,7 @@ export function VendorReviewDetailPage({ vendorId }: Props) {
     return (
       <AdminShell>
         <div className={pageBackdrop}>
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto w-full max-w-[1440px]">
             <section className="rounded-[28px] border border-neutral-100 bg-white p-10 text-center shadow-sm md:p-12">
               <h1 className="text-xl font-semibold text-neutral-900">出店者評価が見つかりません</h1>
               <p className="mt-3 text-sm text-neutral-500">
@@ -135,7 +135,7 @@ export function VendorReviewDetailPage({ vendorId }: Props) {
   return (
     <AdminShell>
       <div className={pageBackdrop}>
-        <div className="mx-auto max-w-[920px] space-y-6">
+        <div className="mx-auto w-full max-w-[1440px] space-y-6">
           <section className="rounded-[28px] border border-neutral-100/80 bg-white p-8 shadow-[0_1px_3px_rgba(15,23,42,0.06)] md:p-10 lg:p-12">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 flex-1 space-y-4">
@@ -182,12 +182,7 @@ export function VendorReviewDetailPage({ vendorId }: Props) {
                 iconBg="bg-amber-50 text-amber-600"
                 label="総合評価"
                 value={
-                  <div className="mt-2 flex flex-wrap items-end gap-3">
-                    <span className="text-4xl font-bold tabular-nums tracking-tight text-amber-600 md:text-[2.75rem]">
-                      {formatScore(summary.overallScore)}
-                    </span>
-                    <StarRating value={Math.round(summary.overallScore)} readOnly size={26} />
-                  </div>
+                  <MetricValue value={formatScore(summary.overallScore)} colorClass="text-amber-600" />
                 }
               />
               <MetricTile
@@ -195,10 +190,7 @@ export function VendorReviewDetailPage({ vendorId }: Props) {
                 iconBg="bg-sky-50 text-sky-600"
                 label="総合コメント数"
                 value={
-                  <p className="mt-2 text-4xl font-bold tabular-nums tracking-tight text-neutral-900 md:text-[2.75rem]">
-                    {summary.commentCount}
-                    <span className="ml-1 text-lg font-semibold text-neutral-400">件</span>
-                  </p>
+                  <MetricValue value={summary.commentCount} suffix="件" />
                 }
               />
               <MetricTile
@@ -206,42 +198,47 @@ export function VendorReviewDetailPage({ vendorId }: Props) {
                 iconBg="bg-rose-50 text-rose-600"
                 label="NG登録件数"
                 value={
-                  <p className="mt-2 text-4xl font-bold tabular-nums tracking-tight text-neutral-900 md:text-[2.75rem]">
-                    {ngCount}
-                    <span className="ml-1 text-lg font-semibold text-neutral-400">件</span>
-                  </p>
+                  <MetricValue value={ngCount} suffix="件" />
                 }
               />
             </div>
           </section>
 
-          <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200/80 bg-white/90 px-5 py-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center">
-            <label className="flex min-w-[11rem] flex-1 flex-col gap-1.5 text-xs font-medium text-neutral-500">
-              並び替え
+          <div className="flex flex-wrap items-center gap-5 rounded-2xl border border-neutral-200/80 bg-white/90 px-5 py-4 shadow-sm">
+            <label className="flex min-w-[11rem]">
               <select
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value as SortOption)}
                 className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-medium text-neutral-900 shadow-sm focus:border-[#2c32f1] focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/20"
               >
-                <option value="new">新しい順</option>
-                <option value="old">古い順</option>
-                <option value="score_high">総合評価が高い順</option>
-                <option value="score_low">総合評価が低い順</option>
+                <option value="new">並び替え：新しい順</option>
+                <option value="old">並び替え：古い順</option>
+                <option value="score_high">並び替え：総合評価が高い順</option>
+                <option value="score_low">並び替え：総合評価が低い順</option>
               </select>
             </label>
-            <label className="flex min-w-[11rem] flex-1 flex-col gap-1.5 text-xs font-medium text-neutral-500">
-              総合評価
+            <label className="flex min-w-[11rem]">
               <select
                 value={overallFilter}
                 onChange={(e) => setOverallFilter(e.target.value as OverallFilterOption)}
                 className="rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-medium text-neutral-900 shadow-sm focus:border-[#2c32f1] focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/20"
               >
-                <option value="all">すべて</option>
-                <option value="gte4">4.0以上</option>
-                <option value="mid3">3.0〜3.9</option>
-                <option value="lt3">3.0未満</option>
+                <option value="all">総合評価：すべて</option>
+                <option value="gte4">総合評価：4.0以上</option>
+                <option value="mid3">総合評価：3.0〜3.9</option>
+                <option value="lt3">総合評価：3.0未満</option>
               </select>
             </label>
+            <button
+              type="button"
+              onClick={() => {
+                setSortKey("new");
+                setOverallFilter("all");
+              }}
+              className="inline-flex shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-medium text-neutral-800 shadow-sm transition hover:bg-neutral-50 focus:border-[#2c32f1] focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/20"
+            >
+              リセット
+            </button>
           </div>
 
           <div className="space-y-5 pb-4">
@@ -266,15 +263,19 @@ function MetricTile({
   iconBg,
   label,
   value,
+  className = "",
 }: {
   icon: ReactNode;
   iconBg: string;
   label: string;
   value: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="rounded-[22px] border border-neutral-100 bg-neutral-50/40 p-6 md:p-7">
-      <div className="flex items-start gap-4">
+    <div
+      className={`rounded-[22px] border border-neutral-100 bg-neutral-50/40 px-6 py-5 md:px-7 md:py-5 ${className}`}
+    >
+      <div className="flex items-center gap-4">
         <span
           className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${iconBg}`}
           aria-hidden
@@ -287,6 +288,23 @@ function MetricTile({
         </div>
       </div>
     </div>
+  );
+}
+
+function MetricValue({
+  value,
+  suffix,
+  colorClass = "text-neutral-900",
+}: {
+  value: string | number;
+  suffix?: string;
+  colorClass?: string;
+}) {
+  return (
+    <p className={`mt-2 flex items-baseline gap-1 text-4xl font-bold leading-none tabular-nums tracking-tight md:text-[2.75rem] ${colorClass}`}>
+      <span>{value}</span>
+      {suffix ? <span className="text-lg font-semibold leading-none text-neutral-400">{suffix}</span> : null}
+    </p>
   );
 }
 

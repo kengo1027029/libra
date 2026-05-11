@@ -179,6 +179,7 @@ export function NewEventPage() {
     const stored: StoredAdminEvent = {
       id: `event-${now.getTime()}`,
       createdAt: now.toISOString(),
+      publishedAt: "",
       status: "申請中",
       ...draft,
       visitorScale: draft.visitorScale as VisitorScale,
@@ -197,7 +198,7 @@ export function NewEventPage() {
 
   return (
     <AdminShell>
-      <div className="mx-auto max-w-[1200px] space-y-6">
+      <div className="mx-auto w-full max-w-[1440px] space-y-6">
         <section className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm md:p-8 lg:p-10">
           <header>
             <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">イベント登録</h1>

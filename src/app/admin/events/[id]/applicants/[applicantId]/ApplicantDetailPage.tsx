@@ -61,7 +61,7 @@ export function ApplicantDetailPage({
 
   return (
     <AdminShell>
-      <div className="mx-auto max-w-[1400px] px-0">
+      <div className="mx-auto w-full max-w-[1440px] px-0">
         <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
           <h1 className="text-3xl font-semibold tracking-tight text-neutral-900">出店者情報</h1>
 

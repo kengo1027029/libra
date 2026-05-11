@@ -54,6 +54,16 @@ function IconStar({ className }: { className?: string }) {
   );
 }
 
+function IconArchive({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+      <path d="M10 12h4" />
+    </svg>
+  );
+}
+
 function IconLogout({ className }: { className?: string }) {
   return (
     <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -92,7 +102,8 @@ type NavLinkConfig = {
 const navLinks: NavLinkConfig[] = [
   { href: "/admin", label: "プロフィール設定", Icon: IconProfile, isActive: (p) => normalizePath(p) === "/admin" },
   { href: "/admin/events", label: "イベント掲載一覧", Icon: IconList, isActive: (p) => normalizePath(p) === "/admin/events" },
-  { href: "/admin/events/new", label: "イベント登録", Icon: IconEventAdd, isActive: (p) => normalizePath(p).startsWith("/admin/events/new") },
+  { href: "/admin/events/new", label: "イベント登録", Icon: IconEventAdd, isActive: (p) => normalizePath(p) === "/admin/events/new" },
+  { href: "/admin/events/new2", label: "イベント登録2", Icon: IconEventAdd, isActive: (p) => normalizePath(p) === "/admin/events/new2" },
   {
     href: "/admin/vendor-reviews",
     label: "出店者評価",
@@ -101,6 +112,12 @@ const navLinks: NavLinkConfig[] = [
       const path = normalizePath(p);
       return path === "/admin/vendor-reviews" || path.startsWith("/admin/vendor-reviews/");
     },
+  },
+  {
+    href: "/admin/archive",
+    label: "アーカイブ",
+    Icon: IconArchive,
+    isActive: (p) => normalizePath(p) === "/admin/archive",
   },
 ];
 

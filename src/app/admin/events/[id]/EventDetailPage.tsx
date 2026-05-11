@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AdminFixedRowMenuPopover } from "@/components/admin/AdminFixedRowMenuPopover";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { hasAdminSession } from "@/lib/admin-session";
+import { appendAdminArchiveEntry, getArchivedApplicantKeys } from "@/lib/admin-archive";
 import {
   getApplicantsForEvent,
   type Applicant,
   type ContactStatus,
 } from "@/lib/admin-event-applicants";
 
-type ApplicantAction = "出店者情報" | "削除";
+type ApplicantAction = "出店者情報" | "アーカイブ";
 
 const EVENT_TITLE_MAP: Record<string, string> = {
   "1": "わんわんマルシェ",
@@ -47,8 +49,9 @@ function MenuChevron() {
 export function EventDetailPage({ eventId }: { eventId: string }) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
-  const [applicants, setApplicants] = useState<Applicant[]>(() => getApplicantsForEvent(eventId));
+  const [applicants, setApplicants] = useState<Applicant[]>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [contactFilters, setContactFilters] = useState<ContactStatus[]>([]);
 
   useEffect(() => {
@@ -60,24 +63,13 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
   }, [router]);
 
   useEffect(() => {
-    setApplicants(getApplicantsForEvent(eventId));
+    const hidden = getArchivedApplicantKeys();
+    setApplicants(
+      getApplicantsForEvent(eventId).filter((a) => !hidden.has(`${eventId}:${a.id}`)),
+    );
   }, [eventId]);
 
   const closeMenu = useCallback(() => setOpenMenuId(null), []);
-
-  useEffect(() => {
-    if (!openMenuId) return;
-    function onPointerDown(e: PointerEvent) {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      const root = target.closest("[data-applicant-menu]");
-      const rid = root?.getAttribute("data-applicant-menu");
-      if (rid === openMenuId) return;
-      closeMenu();
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [openMenuId, closeMenu]);
 
   const stats = useMemo(() => {
     const total = applicants.length;
@@ -90,6 +82,11 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
   const filteredApplicants = useMemo(
     () => applicants.filter((a) => contactMatchesSelection(a.contactStatus, contactFilters)),
     [applicants, contactFilters],
+  );
+
+  const openMenuApplicant = useMemo(
+    () => (openMenuId ? (applicants.find((a) => a.id === openMenuId) ?? null) : null),
+    [openMenuId, applicants],
   );
 
   function toggleContactFilter(status: ContactStatus) {
@@ -114,8 +111,21 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
       closeMenu();
       return;
     }
-    console.log("[応募管理]", action, { eventId, applicantId: row.id, name: row.name });
-    closeMenu();
+    if (action === "アーカイブ") {
+      closeMenu();
+      const ok = window.confirm("このデータをアーカイブしますか？");
+      if (!ok) return;
+      appendAdminArchiveEntry({
+        source: "applicants",
+        sourceLabel: "応募管理",
+        title: row.name,
+        description: `${row.genre} · ${row.contactStatus}`,
+        originalData: { eventId, applicant: row },
+      });
+      setApplicants((prev) => prev.filter((a) => a.id !== row.id));
+      router.push("/admin/archive");
+      return;
+    }
   }
 
   function navigateToApplicant(applicantId: string) {
@@ -135,8 +145,15 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
 
   return (
     <AdminShell>
-      <div className="mx-auto max-w-[1400px] space-y-6">
+      <div className="mx-auto w-full max-w-[1440px] space-y-6">
         <section className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm md:p-8">
+          <nav className="mb-4 text-sm text-neutral-500" aria-label="パンくず">
+            <Link href="/admin/events" className="font-medium text-neutral-600 hover:text-[#2c32f1]">
+              イベント掲載一覧
+            </Link>
+            <span className="mx-2 text-neutral-300">＞</span>
+            <span className="text-neutral-800">{eventTitle}</span>
+          </nav>
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <div className="flex items-center gap-3">
@@ -288,6 +305,9 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
                         <button
                           type="button"
                           className="rounded-md px-2 py-1 text-lg leading-none text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c32f1]/40"
+                          ref={(el) => {
+                            menuButtonRefs.current[row.id] = el;
+                          }}
                           aria-expanded={openMenuId === row.id}
                           aria-haspopup="menu"
                           aria-label={`${row.name} の操作メニュー`}
@@ -298,33 +318,6 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
                         >
                           ···
                         </button>
-                        {openMenuId === row.id ? (
-                          <div
-                            role="menu"
-                            className="absolute right-0 top-full z-30 mt-1 min-w-[10rem] rounded-lg border border-neutral-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
-                          >
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-neutral-900 hover:bg-neutral-50"
-                              onClick={() => onMenuAction(row, "出店者情報")}
-                            >
-                              出店者情報
-                              <MenuChevron />
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-red-50"
-                              onClick={() => onMenuAction(row, "削除")}
-                            >
-                              削除
-                              <span className="text-red-400" aria-hidden>
-                                ›
-                              </span>
-                            </button>
-                          </div>
-                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -334,6 +327,38 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
           </div>
         </section>
       </div>
+      {openMenuId && openMenuApplicant ? (
+        <AdminFixedRowMenuPopover
+          openMenuId={openMenuId}
+          getAnchorEl={() => menuButtonRefs.current[openMenuId] ?? null}
+          rowMenuRootAttr="data-applicant-menu"
+          estimatedMenuHeight={96}
+          estimatedMenuWidth={168}
+          menuPanelClassName="min-w-[10rem] py-1"
+          onClose={closeMenu}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-neutral-900 hover:bg-neutral-50"
+            onClick={() => onMenuAction(openMenuApplicant, "出店者情報")}
+          >
+            出店者情報
+            <MenuChevron />
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm font-medium text-red-500 hover:bg-red-50 hover:text-red-600"
+            onClick={() => onMenuAction(openMenuApplicant, "アーカイブ")}
+          >
+            アーカイブ
+            <span className="text-red-400" aria-hidden>
+              ›
+            </span>
+          </button>
+        </AdminFixedRowMenuPopover>
+      ) : null}
     </AdminShell>
   );
 }

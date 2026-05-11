@@ -114,7 +114,7 @@ export function AdminDashboard() {
 
   return (
     <AdminShell>
-      <div className="mx-auto max-w-[1400px] px-0">
+      <div className="mx-auto w-full max-w-[1440px] px-0">
         {showForm ? (
           <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
             <div className="mb-8 flex items-center gap-2 text-neutral-600">
