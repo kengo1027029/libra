@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { ENABLE_GOOGLE_OAUTH } from "@/lib/admin-google-oauth";
 import { isAuthMockMode, requestHasMockAuthCookie } from "@/lib/auth-mode";
 
 function normalizePath(pathname: string) {
@@ -28,7 +29,9 @@ function getSupabaseEnv() {
 
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  const mockOk = isAuthMockMode() && requestHasMockAuthCookie(request);
+  const hasMockCookie = requestHasMockAuthCookie(request);
+  /** 仮ログイン Cookie または明示モック（NEXT_PUBLIC_AUTH_MOCK） */
+  const mockOk = hasMockCookie && (!ENABLE_GOOGLE_OAUTH || isAuthMockMode());
 
   const { url, key } = getSupabaseEnv();
   if (!url || !key) {

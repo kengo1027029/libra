@@ -3,12 +3,10 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { establishMockAdminSession, setAdminSession } from "@/lib/admin-session";
+import { establishMockAdminSession, establishStubAdminSession } from "@/lib/admin-session";
+import { ENABLE_GOOGLE_OAUTH } from "@/lib/admin-google-oauth";
 import { isAuthMockMode } from "@/lib/auth-mode";
 import { createClient } from "@/lib/supabase";
-
-/** false: Google ボタンは仮ログインのみ。true: 本番 Google OAuth（Supabase）を実行 */
-const ENABLE_GOOGLE_OAUTH = false;
 
 function MailIcon() {
   return (
@@ -71,6 +69,12 @@ export function LoginForm() {
     }
     setLoading(true);
     try {
+      if (!ENABLE_GOOGLE_OAUTH) {
+        establishStubAdminSession();
+        router.push("/admin/events");
+        router.refresh();
+        return;
+      }
       if (isAuthMockMode()) {
         establishMockAdminSession();
         router.push("/admin/events");
@@ -99,11 +103,7 @@ export function LoginForm() {
     setGoogleLoading(true);
     try {
       if (!ENABLE_GOOGLE_OAUTH) {
-        if (isAuthMockMode()) {
-          establishMockAdminSession();
-        } else {
-          setAdminSession();
-        }
+        establishStubAdminSession();
         router.push("/admin/events");
         router.refresh();
         return;

@@ -4,10 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ENABLE_GOOGLE_OAUTH } from "@/lib/admin-google-oauth";
 import { clearAllClientAdminAuth } from "@/lib/admin-session";
 import { loadAdminProfile } from "@/lib/admin-profile";
 import { isAuthMockMode } from "@/lib/auth-mode";
-import { createClient } from "@/lib/supabase";
+import { createClient, hasSupabaseBrowserConfig } from "@/lib/supabase";
 
 function normalizePath(pathname: string) {
   if (pathname.length > 1 && pathname.endsWith("/")) return pathname.slice(0, -1);
@@ -167,7 +168,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const familyName = useMemo(() => extractFamilyName(profileName), [profileName]);
 
   async function handleLogout() {
-    if (!isAuthMockMode()) {
+    if (ENABLE_GOOGLE_OAUTH && hasSupabaseBrowserConfig() && !isAuthMockMode()) {
       try {
         const supabase = createClient();
         await supabase.auth.signOut();

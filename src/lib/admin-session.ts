@@ -1,3 +1,4 @@
+import { ENABLE_GOOGLE_OAUTH } from "@/lib/admin-google-oauth";
 import {
   AUTH_MOCK_COOKIE_NAME,
   AUTH_MOCK_COOKIE_VALUE,
@@ -36,6 +37,17 @@ export function establishMockAdminSession(): void {
   if (!isAuthMockMode()) return;
   setAdminSession();
   setBrowserMockAuthCookie();
+}
+
+/**
+ * 仮ログイン（Google OAuth オフ時）およびモック環境用。
+ * `ENABLE_GOOGLE_OAUTH === false` のときは Cookie を必ず付与し middleware と整合させる。
+ */
+export function establishStubAdminSession(): void {
+  setAdminSession();
+  if (!ENABLE_GOOGLE_OAUTH || isAuthMockMode()) {
+    setBrowserMockAuthCookie();
+  }
 }
 
 export function clearAllClientAdminAuth(): void {

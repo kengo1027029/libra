@@ -1,12 +1,13 @@
 "use client";
 
+import { ENABLE_GOOGLE_OAUTH } from "@/lib/admin-google-oauth";
+import { hasAdminSession } from "@/lib/admin-session";
 import {
   AUTH_MOCK_COOKIE_NAME,
   AUTH_MOCK_COOKIE_VALUE,
   isAuthMockMode,
 } from "@/lib/auth-mode";
-import { hasAdminSession } from "@/lib/admin-session";
-import { createClient } from "@/lib/supabase";
+import { createClient, hasSupabaseBrowserConfig } from "@/lib/supabase";
 
 function clientHasMockAuthCookie(): boolean {
   if (typeof document === "undefined") return false;
@@ -20,8 +21,19 @@ function clientHasMockAuthCookie(): boolean {
 }
 
 export async function ensureSupabaseSession(replace: (href: string) => void): Promise<boolean> {
+  if (!ENABLE_GOOGLE_OAUTH) {
+    if (hasAdminSession() || clientHasMockAuthCookie()) return true;
+    replace("/admin/login");
+    return false;
+  }
+
   if (isAuthMockMode()) {
     if (hasAdminSession() || clientHasMockAuthCookie()) return true;
+    replace("/admin/login");
+    return false;
+  }
+
+  if (!hasSupabaseBrowserConfig()) {
     replace("/admin/login");
     return false;
   }
