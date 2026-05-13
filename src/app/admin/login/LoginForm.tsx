@@ -3,9 +3,12 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { establishMockAdminSession } from "@/lib/admin-session";
+import { establishMockAdminSession, setAdminSession } from "@/lib/admin-session";
 import { isAuthMockMode } from "@/lib/auth-mode";
 import { createClient } from "@/lib/supabase";
+
+/** false: Google ボタンは仮ログインのみ。true: 本番 Google OAuth（Supabase）を実行 */
+const ENABLE_GOOGLE_OAUTH = false;
 
 function MailIcon() {
   return (
@@ -34,6 +37,21 @@ function GoogleIcon() {
       <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.2-3.2 5.8-6.1 7.4l.1-.1 6.2 5.2c-.4.3 8.5-6.5 8.5-16.5 0-1.3-.1-2.4-.4-3.5z" />
     </svg>
   );
+}
+
+/** 本番Google OAuth用: Supabase `signInWithOAuth`（ENABLE_GOOGLE_OAUTH が true のときのみ呼び出す） */
+async function runSupabaseGoogleOAuth(): Promise<{ error: Error | null }> {
+  const supabase = createClient();
+  const { error: oauthError } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    },
+  });
+  if (oauthError) {
+    return { error: new Error(oauthError.message || "Googleログインを開始できませんでした。") };
+  }
+  return { error: null };
 }
 
 export function LoginForm() {
@@ -80,26 +98,26 @@ export function LoginForm() {
     setError(null);
     setGoogleLoading(true);
     try {
-      if (isAuthMockMode()) {
-        establishMockAdminSession();
+      if (!ENABLE_GOOGLE_OAUTH) {
+        if (isAuthMockMode()) {
+          establishMockAdminSession();
+        } else {
+          setAdminSession();
+        }
         router.push("/admin/events");
         router.refresh();
-        setGoogleLoading(false);
         return;
       }
-      const supabase = createClient();
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (oauthError) {
-        setError(oauthError.message || "Googleログインを開始できませんでした。");
-        setGoogleLoading(false);
+
+      const { error: oauthErr } = await runSupabaseGoogleOAuth();
+      if (oauthErr) {
+        setError(oauthErr.message || "Googleログインを開始できませんでした。");
       }
     } catch {
-      setError("Googleログインを開始できませんでした。");
+      if (ENABLE_GOOGLE_OAUTH) {
+        setError("Googleログインを開始できませんでした。");
+      }
+    } finally {
       setGoogleLoading(false);
     }
   }
