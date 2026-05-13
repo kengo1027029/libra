@@ -4,9 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { AdminShell } from "@/components/admin/AdminShell";
 import { StarRating } from "@/components/admin/StarRating";
-import { hasAdminSession } from "@/lib/admin-session";
+import { ensureSupabaseSession } from "@/lib/supabase-auth-guard";
 import {
   formatScore,
   loadVendorReviews,
@@ -48,12 +47,11 @@ export function VendorReviewsListPage() {
   const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
-    if (!hasAdminSession()) {
-      router.replace("/admin/login");
-      return;
-    }
-    setReady(true);
-    setSummaries(summarizeVendorReviews(loadVendorReviews()));
+    void (async () => {
+      if (!(await ensureSupabaseSession((href) => router.replace(href)))) return;
+      setReady(true);
+      setSummaries(summarizeVendorReviews(loadVendorReviews()));
+    })();
   }, [router]);
 
   const closeMenu = useCallback(() => setOpenMenuId(null), []);
@@ -183,7 +181,7 @@ export function VendorReviewsListPage() {
     "rounded-md px-2 py-1 text-lg leading-none text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2c32f1]/40";
 
   return (
-    <AdminShell>
+    <>
       <div className="mx-auto w-full max-w-[1440px] px-0">
         <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -217,7 +215,7 @@ export function VendorReviewsListPage() {
             </Link>
           </div>
 
-          <div className="mt-8 grid gap-3 rounded-xl border border-neutral-200 bg-neutral-50/70 p-4 md:grid-cols-[1.4fr_1fr_1fr_1fr_auto] md:items-center">
+          <div className="mt-8 grid gap-3 rounded-xl border border-neutral-200 bg-[#ffffff] p-4 md:grid-cols-[1.4fr_1fr_1fr_1fr_auto] md:items-center">
             <div>
               <label htmlFor="vendor-search" className="sr-only">
                 出店者名で検索
@@ -434,7 +432,7 @@ export function VendorReviewsListPage() {
             document.body,
           )
         : null}
-    </AdminShell>
+    </>
   );
 }
 

@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AdminShell } from "@/components/admin/AdminShell";
-import { hasAdminSession } from "@/lib/admin-session";
+import { ensureSupabaseSession } from "@/lib/supabase-auth-guard";
 import {
   loadAdminProfile,
   saveAdminProfile,
@@ -51,11 +50,10 @@ export function AdminDashboard() {
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    if (!hasAdminSession()) {
-      router.replace("/admin/login");
-      return;
-    }
-    setAuthReady(true);
+    void (async () => {
+      if (!(await ensureSupabaseSession((href) => router.replace(href)))) return;
+      setAuthReady(true);
+    })();
   }, [router]);
 
   useEffect(() => {
@@ -108,13 +106,14 @@ export function AdminDashboard() {
   const showForm = saved === null || editing;
 
   const fieldClass =
-    "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 shadow-sm placeholder:text-neutral-400 focus:border-[#2c32f1] focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/25";
+    "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-[#2c32f1] focus:outline-none focus:ring-2 focus:ring-[#2c32f1]/25";
 
-  const labelClass = "mb-1.5 block text-sm font-medium text-neutral-800";
+  const fieldRowClass =
+    "grid gap-5 md:grid-cols-[180px_minmax(0,1fr)] md:items-start";
+  const fieldLabelClass = "pt-2 text-sm font-medium text-neutral-800";
 
   return (
-    <AdminShell>
-      <div className="mx-auto w-full max-w-[1440px] px-0">
+    <div className="mx-auto w-full max-w-[1440px] px-0">
         {showForm ? (
           <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
             <div className="mb-8 flex items-center gap-2 text-neutral-600">
@@ -126,102 +125,113 @@ export function AdminDashboard() {
               </h1>
             </div>
 
-            <form onSubmit={handleSubmit} className="max-w-4xl space-y-8">
-              <div className="grid gap-6 md:grid-cols-2 md:gap-x-10 md:gap-y-6">
-                <div>
-                  <label htmlFor="profile-name" className={labelClass}>
+            <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
+                <div className={fieldRowClass}>
+                  <label htmlFor="profile-name" className={fieldLabelClass}>
                     氏名
                     <RequiredMark />
                   </label>
-                  <input
-                    id="profile-name"
-                    name="name"
-                    type="text"
-                    autoComplete="name"
-                    required
-                    value={draft.name}
-                    onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                    placeholder="山田 太郎"
-                    className={fieldClass}
-                  />
+                  <div className="min-w-0">
+                    <input
+                      id="profile-name"
+                      name="name"
+                      type="text"
+                      autoComplete="name"
+                      required
+                      value={draft.name}
+                      onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                      placeholder="山田 太郎"
+                      className={fieldClass}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="profile-org" className={labelClass}>
+                <div className={fieldRowClass}>
+                  <label htmlFor="profile-org" className={fieldLabelClass}>
                     団体名 / 会社名
                     <RequiredMark />
                   </label>
-                  <input
-                    id="profile-org"
-                    name="organization"
-                    type="text"
-                    required
-                    value={draft.organization}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, organization: e.target.value }))
-                    }
-                    placeholder="株式会社◯◯"
-                    className={fieldClass}
-                  />
+                  <div className="min-w-0">
+                    <input
+                      id="profile-org"
+                      name="organization"
+                      type="text"
+                      required
+                      value={draft.organization}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, organization: e.target.value }))
+                      }
+                      placeholder="株式会社◯◯"
+                      className={fieldClass}
+                    />
+                  </div>
                 </div>
-                <div className="md:col-span-2">
-                  <label htmlFor="profile-kana" className={labelClass}>
+                <div className={fieldRowClass}>
+                  <label htmlFor="profile-kana" className={fieldLabelClass}>
                     ふりがな
                     <RequiredMark />
                   </label>
-                  <input
-                    id="profile-kana"
-                    name="kana"
-                    type="text"
-                    required
-                    value={draft.kana}
-                    onChange={(e) => setDraft((d) => ({ ...d, kana: e.target.value }))}
-                    placeholder="やまだたろう"
-                    className={fieldClass}
-                  />
+                  <div className="min-w-0">
+                    <input
+                      id="profile-kana"
+                      name="kana"
+                      type="text"
+                      required
+                      value={draft.kana}
+                      onChange={(e) => setDraft((d) => ({ ...d, kana: e.target.value }))}
+                      placeholder="やまだたろう"
+                      className={fieldClass}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="profile-email" className={labelClass}>
+                <div className={fieldRowClass}>
+                  <label htmlFor="profile-email" className={fieldLabelClass}>
                     メールアドレス
                     <RequiredMark />
                   </label>
-                  <input
-                    id="profile-email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={draft.email}
-                    onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
-                    placeholder="sample@gmail.com"
-                    className={fieldClass}
-                  />
+                  <div className="min-w-0">
+                    <input
+                      id="profile-email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      value={draft.email}
+                      onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+                      placeholder="sample@gmail.com"
+                      className={fieldClass}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="profile-phone" className={labelClass}>
+                <div className={fieldRowClass}>
+                  <label htmlFor="profile-phone" className={fieldLabelClass}>
                     電話番号
                     <RequiredMark />
                   </label>
-                  <input
-                    id="profile-phone"
-                    name="phone"
-                    type="tel"
-                    autoComplete="tel"
-                    required
-                    value={draft.phone}
-                    onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
-                    placeholder="09012345678"
-                    className={fieldClass}
-                  />
+                  <div className="min-w-0">
+                    <input
+                      id="profile-phone"
+                      name="phone"
+                      type="tel"
+                      autoComplete="tel"
+                      required
+                      value={draft.phone}
+                      onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
+                      placeholder="09012345678"
+                      className={fieldClass}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="pt-2 md:max-w-xs">
-                <button
-                  type="submit"
-                  className="w-full rounded-[10px] bg-[#2c32f1] px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#252adb] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2c32f1] md:w-auto md:min-w-[200px]"
-                >
-                  登録する
-                </button>
+              <div className="grid gap-5 pt-4 md:grid-cols-[180px_minmax(0,1fr)] md:items-start">
+                <div className="hidden md:block" aria-hidden />
+                <div className="min-w-0">
+                  <button
+                    type="submit"
+                    className="w-full rounded-[10px] bg-[#2c32f1] px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#252adb] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2c32f1] md:w-auto md:min-w-[200px]"
+                  >
+                    登録する
+                  </button>
+                </div>
               </div>
             </form>
           </section>
@@ -266,6 +276,5 @@ export function AdminDashboard() {
           </section>
         )}
       </div>
-    </AdminShell>
   );
 }

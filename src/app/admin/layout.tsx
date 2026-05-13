@@ -1,7 +1,9 @@
+import { AdminLayoutGate } from "./AdminLayoutGate";
+
 export default function AdminRootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  return <AdminLayoutGate>{children}</AdminLayoutGate>;
 }

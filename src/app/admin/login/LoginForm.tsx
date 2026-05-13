@@ -3,7 +3,9 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { setAdminSession } from "@/lib/admin-session";
+import { establishMockAdminSession } from "@/lib/admin-session";
+import { isAuthMockMode } from "@/lib/auth-mode";
+import { createClient } from "@/lib/supabase";
 
 function MailIcon() {
   return (
@@ -40,8 +42,9 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
-  function handleLogin(e: FormEvent) {
+  async function handleLogin(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (!email.trim() || !password.trim()) {
@@ -49,15 +52,56 @@ export function LoginForm() {
       return;
     }
     setLoading(true);
-    setAdminSession();
-    router.push("/admin");
-    router.refresh();
+    try {
+      if (isAuthMockMode()) {
+        establishMockAdminSession();
+        router.push("/admin/events");
+        router.refresh();
+        return;
+      }
+      const supabase = createClient();
+      const { error: signError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (signError) {
+        setError(signError.message || "ログインに失敗しました。");
+        return;
+      }
+      router.push("/admin/events");
+      router.refresh();
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function handleGoogleLogin() {
-    setAdminSession();
-    router.push("/admin");
-    router.refresh();
+  async function handleGoogleLogin() {
+    if (googleLoading) return;
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      if (isAuthMockMode()) {
+        establishMockAdminSession();
+        router.push("/admin/events");
+        router.refresh();
+        setGoogleLoading(false);
+        return;
+      }
+      const supabase = createClient();
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+      if (oauthError) {
+        setError(oauthError.message || "Googleログインを開始できませんでした。");
+        setGoogleLoading(false);
+      }
+    } catch {
+      setError("Googleログインを開始できませんでした。");
+      setGoogleLoading(false);
+    }
   }
 
   return (
@@ -99,7 +143,7 @@ export function LoginForm() {
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || googleLoading}
         className="w-full rounded-xl bg-[#1767e8] py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0f56cb] disabled:opacity-60"
       >
         {loading ? "ログイン中…" : "ログイン"}
@@ -117,11 +161,12 @@ export function LoginForm() {
 
       <button
         type="button"
-        onClick={handleGoogleLogin}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-300 bg-white py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50"
+        onClick={() => void handleGoogleLogin()}
+        disabled={googleLoading || loading}
+        className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-neutral-300 bg-white py-3 text-sm font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <GoogleIcon />
-        Google
+        {googleLoading ? "接続中…" : "Google"}
       </button>
 
       <p className="pt-2 text-center text-sm text-neutral-500">

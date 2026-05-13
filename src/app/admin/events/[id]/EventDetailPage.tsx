@@ -4,8 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AdminFixedRowMenuPopover } from "@/components/admin/AdminFixedRowMenuPopover";
-import { AdminShell } from "@/components/admin/AdminShell";
-import { hasAdminSession } from "@/lib/admin-session";
+import { ensureSupabaseSession } from "@/lib/supabase-auth-guard";
 import { appendAdminArchiveEntry, getArchivedApplicantKeys } from "@/lib/admin-archive";
 import {
   getApplicantsForEvent,
@@ -55,11 +54,10 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
   const [contactFilters, setContactFilters] = useState<ContactStatus[]>([]);
 
   useEffect(() => {
-    if (!hasAdminSession()) {
-      router.replace("/admin/login");
-      return;
-    }
-    setReady(true);
+    void (async () => {
+      if (!(await ensureSupabaseSession((href) => router.replace(href)))) return;
+      setReady(true);
+    })();
   }, [router]);
 
   useEffect(() => {
@@ -144,7 +142,7 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
   const cellPadding = "px-4 py-4 md:px-5";
 
   return (
-    <AdminShell>
+    <>
       <div className="mx-auto w-full max-w-[1440px] space-y-6">
         <section className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm md:p-8">
           <nav className="mb-4 text-sm text-neutral-500" aria-label="パンくず">
@@ -359,6 +357,6 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
           </button>
         </AdminFixedRowMenuPopover>
       ) : null}
-    </AdminShell>
+    </>
   );
 }

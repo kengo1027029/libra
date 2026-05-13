@@ -3,10 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AdminShell } from "@/components/admin/AdminShell";
 import { StarRating } from "@/components/admin/StarRating";
 import { loadAdminEvents } from "@/lib/admin-events";
-import { hasAdminSession } from "@/lib/admin-session";
+import { ensureSupabaseSession } from "@/lib/supabase-auth-guard";
 import {
   appendVendorReview,
   EMPTY_VENDOR_REVIEW_DRAFT,
@@ -42,11 +41,10 @@ export function NewVendorReviewPage() {
   const [formError, setFormError] = useState<string>("");
 
   useEffect(() => {
-    if (!hasAdminSession()) {
-      router.replace("/admin/login");
-      return;
-    }
-    setReady(true);
+    void (async () => {
+      if (!(await ensureSupabaseSession((href) => router.replace(href)))) return;
+      setReady(true);
+    })();
   }, [router]);
 
   useEffect(() => {
@@ -123,8 +121,7 @@ export function NewVendorReviewPage() {
   const overallPreview = (draft.score1 + draft.score2 + draft.score3) / 3;
 
   return (
-    <AdminShell>
-      <div className="mx-auto max-w-[960px] space-y-6">
+    <div className="mx-auto max-w-[960px] space-y-6">
         <section className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm md:p-8 lg:p-10">
           <header>
             <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
@@ -309,6 +306,5 @@ export function NewVendorReviewPage() {
           </div>
         </section>
       </div>
-    </AdminShell>
   );
 }

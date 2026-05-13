@@ -4,8 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AdminFixedRowMenuPopover } from "@/components/admin/AdminFixedRowMenuPopover";
-import { AdminShell } from "@/components/admin/AdminShell";
-import { hasAdminSession } from "@/lib/admin-session";
+import { ensureSupabaseSession } from "@/lib/supabase-auth-guard";
 import {
   appendAdminArchiveEntry,
   getArchivedEventIds,
@@ -178,9 +177,6 @@ function entryDateSortTimestamp(entryDateDisplay: string): number {
   return new Date(parsed.year, parsed.month - 1, parsed.day).getTime();
 }
 
-/** EventDetailPage の EVENT_TITLE_MAP と対応するモックのみ詳細ありとして行クリック遷移可 */
-const MOCK_EVENT_IDS_WITH_DETAIL_PAGE = new Set(["1", "2", "3"]);
-
 const MOCK_EVENTS: EventTableRow[] = [
   {
     id: "1",
@@ -325,44 +321,47 @@ export function EventsListPage() {
   const [sortKey, setSortKey] = useState<EventSortKey>("entry_desc");
 
   useEffect(() => {
-    if (!hasAdminSession()) {
-      router.replace("/admin/login");
-      return;
-    }
-    setReady(true);
-    const events = loadAdminEvents();
-    const fromStorage = events.map((event) => {
-      const rawEvent = event as Record<string, unknown>;
-      const applicationStartDate = pickApplicationDateValue(rawEvent, [
-        "applicationStartDate",
-        "applicationPeriodStart",
-        "recruitmentStartDate",
-        "applicationStart",
-      ]);
-      const applicationEndDate = pickApplicationDateValue(rawEvent, [
-        "applicationEndDate",
-        "applicationPeriodEnd",
-        "recruitmentEndDate",
-        "applicationEnd",
-      ]);
-      const hasApplicationPeriod =
-        isFilledApplicationDateValue(applicationStartDate) &&
-        isFilledApplicationDateValue(applicationEndDate);
-      return {
-        id: event.id,
-        entryDate: formatDate(event.createdAt),
-        name: event.title,
-        status: event.status,
-        publishDate: event.publishedAt,
-        applicationPeriod: formatApplicationPeriodFromDates(applicationStartDate, applicationEndDate),
-        hasApplicationPeriod,
-      };
-    });
-    setStoredRows(fromStorage);
-    setHiddenArchivedEventIds(getArchivedEventIds());
+    void (async () => {
+      if (!(await ensureSupabaseSession((href) => router.replace(href)))) return;
+      setReady(true);
+      const events = loadAdminEvents();
+      const fromStorage = events.map((event) => {
+        const rawEvent = event as Record<string, unknown>;
+        const applicationStartDate = pickApplicationDateValue(rawEvent, [
+          "applicationStartDate",
+          "applicationPeriodStart",
+          "recruitmentStartDate",
+          "applicationStart",
+        ]);
+        const applicationEndDate = pickApplicationDateValue(rawEvent, [
+          "applicationEndDate",
+          "applicationPeriodEnd",
+          "recruitmentEndDate",
+          "applicationEnd",
+        ]);
+        const hasApplicationPeriod =
+          isFilledApplicationDateValue(applicationStartDate) &&
+          isFilledApplicationDateValue(applicationEndDate);
+        return {
+          id: event.id,
+          entryDate: formatDate(event.createdAt),
+          name: event.title,
+          status: event.status,
+          publishDate: event.publishedAt,
+          applicationPeriod: formatApplicationPeriodFromDates(applicationStartDate, applicationEndDate),
+          hasApplicationPeriod,
+        };
+      });
+      setStoredRows(fromStorage);
+      setHiddenArchivedEventIds(getArchivedEventIds());
+    })();
   }, [router]);
 
   const closeMenu = useCallback(() => setOpenMenuId(null), []);
+
+  function navigateToEventDetail(rowId: string) {
+    router.push(`/admin/events/${rowId}`);
+  }
 
   function toggleMenu(rowId: string) {
     setOpenMenuId((current) => (current === rowId ? null : rowId));
@@ -370,7 +369,7 @@ export function EventsListPage() {
 
   function handleMenuAction(row: EventTableRow, action: MenuAction) {
     if (action === "詳細を見る") {
-      router.push(`/admin/events/${row.id}`);
+      navigateToEventDetail(row.id);
       closeMenu();
       return;
     }
@@ -485,12 +484,6 @@ export function EventsListPage() {
     setSortKey("entry_desc");
   }
 
-  const storedIds = useMemo(() => new Set(storedRows.map((r) => r.id)), [storedRows]);
-
-  function eventHasDetailPage(rowId: string): boolean {
-    return storedIds.has(rowId) || MOCK_EVENT_IDS_WITH_DETAIL_PAGE.has(rowId);
-  }
-
   if (!ready) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-[#f8f9fa] text-sm text-neutral-500">
@@ -505,7 +498,7 @@ export function EventsListPage() {
   const cellPadding = "px-4 py-5 md:px-5";
 
   return (
-    <AdminShell>
+    <>
       <div className="mx-auto w-full max-w-[1440px] px-0">
         <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -544,7 +537,7 @@ export function EventsListPage() {
             </Link>
           </div>
 
-          <div className="mt-8 grid grid-cols-1 gap-5 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
+          <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
             <div>
               <label htmlFor="event-name-search" className="sr-only">
                 イベント名で検索
@@ -657,33 +650,21 @@ export function EventsListPage() {
                   const isReturned = row.status === "差し戻し";
                   const rowText = isReturned ? "text-red-700" : "text-neutral-900";
                   const rowMuted = isReturned ? "text-red-700/85" : "text-neutral-700";
-                  const navigable = eventHasDetailPage(row.id);
 
                   const rowSurface = isReturned ? "bg-amber-50" : "bg-white";
-                  const rowHover =
-                    navigable && isReturned
-                      ? "cursor-pointer hover:bg-amber-100/90"
-                      : navigable && !isReturned
-                        ? "cursor-pointer hover:bg-gray-50"
-                        : isReturned
-                          ? "hover:bg-amber-50/90"
-                          : "hover:bg-neutral-50/70";
-
-                  function handleRowNavigate() {
-                    if (!navigable) return;
-                    router.push(`/admin/events/${row.id}`);
-                  }
+                  const rowHover = isReturned
+                    ? "cursor-pointer hover:bg-amber-100/85"
+                    : "cursor-pointer hover:bg-gray-50";
 
                   return (
                     <tr
                       key={row.id}
                       className={`border-b border-neutral-100 transition-colors ${rowSurface} ${rowHover}`}
                       onClick={(e) => {
-                        if (!navigable) return;
                         const target = e.target as HTMLElement | null;
                         if (!target) return;
                         if (target.closest("[data-event-row-menu]")) return;
-                        handleRowNavigate();
+                        navigateToEventDetail(row.id);
                       }}
                     >
                       <td className={`${cellPadding} whitespace-nowrap ${rowMuted}`}>{row.entryDate}</td>
@@ -701,6 +682,7 @@ export function EventsListPage() {
                             : "border-neutral-200 bg-white"
                         }`}
                         onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
                       >
                         <div className="relative inline-flex justify-end">
                           <button
@@ -712,6 +694,7 @@ export function EventsListPage() {
                             aria-expanded={openMenuId === row.id}
                             aria-haspopup="menu"
                             aria-label={`${row.name} の操作メニュー`}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleMenu(row.id);
@@ -770,6 +753,6 @@ export function EventsListPage() {
           </button>
         </AdminFixedRowMenuPopover>
       ) : null}
-    </AdminShell>
+    </>
   );
 }

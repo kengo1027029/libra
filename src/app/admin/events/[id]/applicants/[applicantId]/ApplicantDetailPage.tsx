@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AdminShell } from "@/components/admin/AdminShell";
-import { hasAdminSession } from "@/lib/admin-session";
+import { ensureSupabaseSession } from "@/lib/supabase-auth-guard";
 import { getApplicantProfileForEvent } from "@/lib/admin-event-applicants";
 
 function isSnsLinkable(raw: string): boolean {
@@ -29,11 +28,10 @@ export function ApplicantDetailPage({
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!hasAdminSession()) {
-      router.replace("/admin/login");
-      return;
-    }
-    setReady(true);
+    void (async () => {
+      if (!(await ensureSupabaseSession((href) => router.replace(href)))) return;
+      setReady(true);
+    })();
   }, [router]);
 
   const profile = useMemo(
@@ -60,8 +58,7 @@ export function ApplicantDetailPage({
   ];
 
   return (
-    <AdminShell>
-      <div className="mx-auto w-full max-w-[1440px] px-0">
+    <div className="mx-auto w-full max-w-[1440px] px-0">
         <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
           <h1 className="text-3xl font-semibold tracking-tight text-neutral-900">出店者情報</h1>
 
@@ -101,6 +98,5 @@ export function ApplicantDetailPage({
           </div>
         </section>
       </div>
-    </AdminShell>
   );
 }

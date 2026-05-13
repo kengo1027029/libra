@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AdminShell } from "@/components/admin/AdminShell";
-import { hasAdminSession } from "@/lib/admin-session";
+import { ensureSupabaseSession } from "@/lib/supabase-auth-guard";
 import {
   appendAdminEvent,
   EMPTY_ADMIN_EVENT_DRAFT,
@@ -45,11 +44,10 @@ export function SimpleNewEventPage() {
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
-    if (!hasAdminSession()) {
-      router.replace("/admin/login");
-      return;
-    }
-    setReady(true);
+    void (async () => {
+      if (!(await ensureSupabaseSession((href) => router.replace(href)))) return;
+      setReady(true);
+    })();
   }, [router]);
 
   const requiredFields = useMemo<Array<{ key: SimpleDraftKey; label: string }>>(
@@ -124,8 +122,7 @@ export function SimpleNewEventPage() {
   }
 
   return (
-    <AdminShell>
-      <div className="mx-auto w-full max-w-[1440px] space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-6">
         <section className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm md:p-8 lg:p-10">
           <header>
             <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">イベント登録</h1>
@@ -251,6 +248,5 @@ export function SimpleNewEventPage() {
           </div>
         </section>
       </div>
-    </AdminShell>
   );
 }

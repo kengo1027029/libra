@@ -3,7 +3,8 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { setAdminSession } from "@/lib/admin-session";
+import { establishMockAdminSession, setAdminSession } from "@/lib/admin-session";
+import { isAuthMockMode } from "@/lib/auth-mode";
 
 function MailIcon() {
   return (
@@ -47,13 +48,21 @@ export function SignupForm() {
       setError("メールアドレスとパスワードを入力してください。");
       return;
     }
-    setAdminSession();
+    if (isAuthMockMode()) {
+      establishMockAdminSession();
+    } else {
+      setAdminSession();
+    }
     router.push("/admin");
     router.refresh();
   }
 
   function handleGoogleSignup() {
-    setAdminSession();
+    if (isAuthMockMode()) {
+      establishMockAdminSession();
+    } else {
+      setAdminSession();
+    }
     router.push("/admin");
     router.refresh();
   }

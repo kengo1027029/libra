@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminFixedRowMenuPopover } from "@/components/admin/AdminFixedRowMenuPopover";
 import {
   ARCHIVE_SECTION_LABELS,
@@ -13,7 +12,7 @@ import {
   restoreAdminArchiveEntry,
   type AdminArchiveEntry,
 } from "@/lib/admin-archive";
-import { hasAdminSession } from "@/lib/admin-session";
+import { ensureSupabaseSession } from "@/lib/supabase-auth-guard";
 
 function formatArchivedAt(iso: string): string {
   const d = new Date(iso);
@@ -45,12 +44,11 @@ export function ArchiveListPage() {
   }, []);
 
   useEffect(() => {
-    if (!hasAdminSession()) {
-      router.replace("/admin/login");
-      return;
-    }
-    setReady(true);
-    refresh();
+    void (async () => {
+      if (!(await ensureSupabaseSession((href) => router.replace(href)))) return;
+      setReady(true);
+      refresh();
+    })();
   }, [router, refresh]);
 
   const bySource = useMemo(() => groupArchivesBySource(archives), [archives]);
@@ -92,16 +90,14 @@ export function ArchiveListPage() {
 
   if (!ready) {
     return (
-      <AdminShell>
         <div className="rounded-xl border border-neutral-200/90 bg-white p-10 text-center text-sm text-neutral-500 shadow-sm">
           読み込み中…
         </div>
-      </AdminShell>
     );
   }
 
   return (
-    <AdminShell>
+    <>
       <section className="rounded-xl border border-neutral-200/90 bg-white p-6 shadow-sm md:rounded-2xl md:p-8 lg:p-10">
         <header className="border-b border-neutral-100 pb-6 md:pb-8">
           <h1 className="text-2xl font-bold tracking-tight text-neutral-900 md:text-3xl">アーカイブ</h1>
@@ -111,13 +107,13 @@ export function ArchiveListPage() {
         </header>
 
         <div className="mt-8 space-y-10 md:mt-10">
-          {ARCHIVE_SOURCE_ORDER.map((source) => {
+          {ARCHIVE_SOURCE_ORDER.filter((source) => source !== "vendorReviews").map((source) => {
             const sectionTitle = ARCHIVE_SECTION_LABELS[source];
             const rows = bySource[source];
             return (
               <section
                 key={source}
-                className="rounded-xl border border-neutral-200 bg-neutral-50/90 p-4 shadow-sm md:p-6"
+                className="min-w-0"
                 aria-labelledby={`archive-section-${source}`}
               >
                 <h2 id={`archive-section-${source}`} className="text-lg font-semibold text-neutral-900">
@@ -215,6 +211,6 @@ export function ArchiveListPage() {
           </button>
         </AdminFixedRowMenuPopover>
       ) : null}
-    </AdminShell>
+    </>
   );
 }

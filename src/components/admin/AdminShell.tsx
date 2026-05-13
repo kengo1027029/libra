@@ -4,12 +4,29 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { clearAdminSession } from "@/lib/admin-session";
+import { clearAllClientAdminAuth } from "@/lib/admin-session";
 import { loadAdminProfile } from "@/lib/admin-profile";
+import { isAuthMockMode } from "@/lib/auth-mode";
+import { createClient } from "@/lib/supabase";
 
 function normalizePath(pathname: string) {
   if (pathname.length > 1 && pathname.endsWith("/")) return pathname.slice(0, -1);
   return pathname;
+}
+
+const ADMIN_EVENTS_BASE = "/admin/events";
+
+/**
+ * 「イベント掲載一覧」配下: `src/app/admin/events/` の一覧・`[id]` 配下（詳細・編集・応募者など）をまとめて判定。
+ * サイドバー「イベント登録」系の静的ルート（`events/new`, `events/new2`）は除外。
+ */
+const ADMIN_EVENT_REGISTRATION_BASES = [`${ADMIN_EVENTS_BASE}/new`, `${ADMIN_EVENTS_BASE}/new2`] as const;
+
+function isActiveEventListingNav(p: string): boolean {
+  const path = normalizePath(p);
+  if (path === ADMIN_EVENTS_BASE) return true;
+  if (!path.startsWith(`${ADMIN_EVENTS_BASE}/`)) return false;
+  return !ADMIN_EVENT_REGISTRATION_BASES.some((base) => path === base || path.startsWith(`${base}/`));
 }
 
 function extractFamilyName(name: string) {
@@ -101,7 +118,7 @@ type NavLinkConfig = {
 
 const navLinks: NavLinkConfig[] = [
   { href: "/admin", label: "プロフィール設定", Icon: IconProfile, isActive: (p) => normalizePath(p) === "/admin" },
-  { href: "/admin/events", label: "イベント掲載一覧", Icon: IconList, isActive: (p) => normalizePath(p) === "/admin/events" },
+  { href: "/admin/events", label: "イベント掲載一覧", Icon: IconList, isActive: isActiveEventListingNav },
   { href: "/admin/events/new", label: "イベント登録", Icon: IconEventAdd, isActive: (p) => normalizePath(p) === "/admin/events/new" },
   { href: "/admin/events/new2", label: "イベント登録2", Icon: IconEventAdd, isActive: (p) => normalizePath(p) === "/admin/events/new2" },
   {
@@ -149,8 +166,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   const familyName = useMemo(() => extractFamilyName(profileName), [profileName]);
 
-  function handleLogout() {
-    clearAdminSession();
+  async function handleLogout() {
+    if (!isAuthMockMode()) {
+      try {
+        const supabase = createClient();
+        await supabase.auth.signOut();
+      } catch {
+        // Supabase 未設定・オフライン時もログアウトは完了させる
+      }
+    }
+    clearAllClientAdminAuth();
     window.location.href = "/admin/login";
   }
 
@@ -270,7 +295,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               })}
             </nav>
           </header>
-          <main className="flex-1 px-4 py-8 md:px-10 md:py-10">{children}</main>
+          <main className="flex-1 px-4 py-8 md:px-10 md:py-10">
+            <div key={pathname} className="page-fade-in">
+              {children}
+            </div>
+          </main>
         </div>
       </div>
     </div>
